@@ -20,3 +20,9 @@ def confirm_task():
         [InlineKeyboardButton(text="🚀 Отправить всем", callback_data="admin_send_task")],
         [InlineKeyboardButton(text="✏️ Отменить", callback_data="admin_cancel_task")],
     ])
+
+
+def enter_game_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔥 ВОЙТИ В ИГРУ", callback_data="enter_game")]
+    ])

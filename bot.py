@@ -12,7 +12,7 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 from config import load_config
 from db import Database
 from cards import points_card
-from keyboards import player_menu, admin_menu, confirm_task
+from keyboards import player_menu, admin_menu, confirm_task, enter_game_keyboard
 
 logging.basicConfig(level=logging.INFO)
 
@@ -80,16 +80,72 @@ async def start(message: Message):
         )
         return
 
-    await ensure_player(message)
+    # Если игрок уже зарегистрирован — сразу открываем игровое меню.
+    existing_player = await db.get_player(message.from_user.id)
+    if existing_player:
+        await message.answer(
+            "🔥 <b>ACTIVATION</b>\n\n"
+            "Ты уже в игре.",
+            reply_markup=player_menu(),
+        )
+        return
 
-    text = (
+    intro_text = (
         "🔥 <b>ACTIVATION</b>\n\n"
         "Ты входишь в игру.\n"
         "Каждое действие двигает тебя дальше.\n"
         "Задания, баллы, достижения и секретные миссии будут появляться здесь.\n\n"
-        "21 день. Насколько далеко ты зайдёшь?"
+        "21 день. Насколько далеко ты зайдёшь?\n\n"
+        "За это время ты пройдёшь 4 уровня:\n"
+        "<b>ЛИЧНОСТЬ → ВИДИМОСТЬ → ВЛИЯНИЕ → МАСШТАБ</b>\n\n"
+        "За действия ты будешь получать баллы, открывать достижения "
+        "и получать секретные миссии.\n\n"
+        "<b>Готова войти в игру?</b>"
     )
-    await message.answer(text, reply_markup=player_menu())
+    await message.answer(intro_text, reply_markup=enter_game_keyboard())
+
+
+@dp.callback_query(F.data == "enter_game")
+async def enter_game(callback: CallbackQuery):
+    if is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+
+    # Регистрируем игрока только после осознанного входа в игру.
+    class UserProxy:
+        id = callback.from_user.id
+        username = callback.from_user.username
+        first_name = callback.from_user.first_name
+        last_name = callback.from_user.last_name
+
+    player = await db.upsert_player(UserProxy())
+
+    if not player["topic_id"]:
+        topic = await bot.create_forum_topic(
+            chat_id=config.admin_chat_id,
+            name=display_name(callback.from_user)[:120],
+        )
+        await db.set_topic(callback.from_user.id, topic.message_thread_id)
+
+        await bot.send_message(
+            chat_id=config.admin_chat_id,
+            message_thread_id=topic.message_thread_id,
+            text=(
+                "👤 <b>НОВЫЙ ИГРОК</b>\n\n"
+                f"Имя: {display_name(callback.from_user)}\n"
+                f"ID: <code>{callback.from_user.id}</code>\n"
+                f"Username: @{callback.from_user.username or '—'}\n\n"
+                "Все сообщения из этой ветки бот отправляет игроку."
+            ),
+        )
+
+    await callback.message.answer(
+        "🔥 <b>ТЫ В ИГРЕ</b>\n\n"
+        "Твоя точка старта зафиксирована. "
+        "С этого момента каждое действие имеет значение.",
+        reply_markup=player_menu(),
+    )
+    await callback.answer("Добро пожаловать в ACTIVATION 🔥")
 
 
 @dp.message(Command("admin"))
