@@ -71,6 +71,15 @@ async def start(message: Message):
     if message.chat.type != "private":
         return
 
+    # Администратор не регистрируется как игрок и видит только панель ведущей.
+    if is_admin(message.from_user.id):
+        await message.answer(
+            "⚙️ <b>ACTIVATION — ПАНЕЛЬ ВЕДУЩЕЙ</b>\n\n"
+            "Здесь ты управляешь заданиями, игроками и рейтингом.",
+            reply_markup=admin_menu(),
+        )
+        return
+
     await ensure_player(message)
 
     text = (
@@ -81,9 +90,6 @@ async def start(message: Message):
         "21 день. Насколько далеко ты зайдёшь?"
     )
     await message.answer(text, reply_markup=player_menu())
-
-    if is_admin(message.from_user.id):
-        await message.answer("⚙️ <b>Панель ведущей</b>", reply_markup=admin_menu())
 
 
 @dp.message(Command("admin"))
@@ -341,8 +347,9 @@ async def secret_command(message: Message):
 async def private_to_topic(message: Message):
     if message.text and message.text.startswith("/"):
         return
+
+    # Личка ведущей остаётся только админ-панелью.
     if is_admin(message.from_user.id):
-        # Админские обычные сообщения в личке бота не пересылаем как сообщения игрока.
         return
 
     player = await ensure_player(message)
