@@ -127,11 +127,8 @@ async def enter_game(callback: CallbackQuery, state: FSMContext):
     await state.set_state(PlayerOnboarding.name)
 
     await callback.message.answer(
-        "🎴 <b>СОЗДАЁМ ТВОЮ КАРТУ ИГРОКА</b>
-
-"
-        "Для начала — как тебя зовут?
-"
+        "🎴 <b>СОЗДАЁМ ТВОЮ КАРТУ ИГРОКА</b>\n\n"
+        "Для начала — как тебя зовут?\n"
         "Напиши имя, которое будет на твоей карточке."
     )
     await callback.answer()
@@ -142,9 +139,7 @@ async def onboarding_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
     await state.set_state(PlayerOnboarding.occupation)
     await message.answer(
-        "Чем ты занимаешься?
-
-"
+        "Чем ты занимаешься?\n\n"
         "Например: <i>эксперт по продвижению, фотограф, психолог, предприниматель</i>."
     )
 
@@ -154,11 +149,8 @@ async def onboarding_occupation(message: Message, state: FSMContext):
     await state.update_data(occupation=message.text.strip())
     await state.set_state(PlayerOnboarding.point_a)
     await message.answer(
-        "📍 <b>ТВОЯ ТОЧКА А</b>
-
-"
-        "Опиши коротко, где ты сейчас в личном бренде.
-"
+        "📍 <b>ТВОЯ ТОЧКА А</b>\n\n"
+        "Опиши коротко, где ты сейчас в личном бренде.\n"
         "Например: <i>редко веду блог, 1200 подписчиков, почти нет заявок</i>."
     )
 
@@ -168,11 +160,8 @@ async def onboarding_point_a(message: Message, state: FSMContext):
     await state.update_data(point_a=message.text.strip())
     await state.set_state(PlayerOnboarding.goal_21)
     await message.answer(
-        "🎯 <b>ТВОЯ ЦЕЛЬ НА 21 ДЕНЬ</b>
-
-"
-        "Что должно измениться за эти 21 день, чтобы ты сказала:
-"
+        "🎯 <b>ТВОЯ ЦЕЛЬ НА 21 ДЕНЬ</b>\n\n"
+        "Что должно измениться за эти 21 день, чтобы ты сказала:\n"
         "<b>«Я реально активировалась»?</b>"
     )
 
@@ -182,9 +171,7 @@ async def onboarding_goal(message: Message, state: FSMContext):
     await state.update_data(goal_21=message.text.strip())
     await state.set_state(PlayerOnboarding.photo)
     await message.answer(
-        "📸 Теперь отправь <b>свою фотографию</b>.
-
-"
+        "📸 Теперь отправь <b>свою фотографию</b>.\n\n"
         "Она станет частью твоей персональной карты игрока ACTIVATION."
     )
 
@@ -225,22 +212,12 @@ async def onboarding_photo(message: Message, state: FSMContext):
             chat_id=config.admin_chat_id,
             message_thread_id=topic.message_thread_id,
             text=(
-                "👤 <b>НОВЫЙ ИГРОК</b>
-
-"
-                f"Имя: {data['name']}
-"
-                f"Чем занимается: {data['occupation']}
-
-"
-                f"📍 <b>Точка А:</b> {data['point_a']}
-
-"
-                f"🎯 <b>Цель на 21 день:</b> {data['goal_21']}
-
-"
-                f"ID: <code>{message.from_user.id}</code>
-"
+                "👤 <b>НОВЫЙ ИГРОК</b>\n\n"
+                f"Имя: {data['name']}\n"
+                f"Чем занимается: {data['occupation']}\n\n"
+                f"📍 <b>Точка А:</b> {data['point_a']}\n\n"
+                f"🎯 <b>Цель на 21 день:</b> {data['goal_21']}\n\n"
+                f"ID: <code>{message.from_user.id}</code>\n"
                 f"Username: @{message.from_user.username or '—'}"
             ),
         )
@@ -256,14 +233,9 @@ async def onboarding_photo(message: Message, state: FSMContext):
     await message.answer_photo(
         FSInputFile(card_path),
         caption=(
-            "🎴 <b>ТВОЯ КАРТА ИГРОКА ГОТОВА</b>
-
-"
-            "Уровень 01 — <b>ЛИЧНОСТЬ</b>
-"
-            "Баллы: <b>0</b>
-
-"
+            "🎴 <b>ТВОЯ КАРТА ИГРОКА ГОТОВА</b>\n\n"
+            "Уровень 01 — <b>ЛИЧНОСТЬ</b>\n"
+            "Баллы: <b>0</b>\n\n"
             "🔥 <b>ТЫ В ИГРЕ</b>"
         ),
         reply_markup=player_menu(),
