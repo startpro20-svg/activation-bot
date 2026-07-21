@@ -247,6 +247,32 @@ class Database:
             )
             await db.commit()
 
+    async def delete_player(self, tg_user_id: int):
+        """
+        Deletes a player and all game data linked to that player.
+        Returns the deleted player's topic_id for optional topic cleanup.
+        """
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                "SELECT id, topic_id FROM players WHERE tg_user_id=?",
+                (tg_user_id,),
+            )
+            player = await cur.fetchone()
+            if not player:
+                return None
+
+            player_id = player["id"]
+            topic_id = player["topic_id"]
+
+            await db.execute("DELETE FROM task_deliveries WHERE player_id=?", (player_id,))
+            await db.execute("DELETE FROM point_events WHERE player_id=?", (player_id,))
+            await db.execute("DELETE FROM secret_missions WHERE player_id=?", (player_id,))
+            await db.execute("DELETE FROM player_achievements WHERE player_id=?", (player_id,))
+            await db.execute("DELETE FROM players WHERE id=?", (player_id,))
+            await db.commit()
+            return topic_id
+
     async def leaderboard(self, limit: int = 20):
         async with aiosqlite.connect(self.path) as db:
             db.row_factory = aiosqlite.Row

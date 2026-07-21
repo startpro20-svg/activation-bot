@@ -13,7 +13,7 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 from config import load_config
 from db import Database
 from cards import points_card, player_card
-from keyboards import player_menu, admin_menu, confirm_task, enter_game_keyboard
+from keyboards import player_menu, admin_menu, confirm_task, enter_game_keyboard, admin_player_actions, admin_confirm_delete_player
 
 logging.basicConfig(level=logging.INFO)
 
@@ -429,96 +429,72 @@ async def admin_send_task(callback: CallbackQuery, state: FSMContext):
 async def admin_players(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         return
+
     players = await db.all_players()
     if not players:
         await callback.message.answer("Игроков пока нет.")
-    else:
-        lines = ["👥 <b>ИГРОКИ</b>\n"]
-        for p in players[:50]:
-            name = p["first_name"] or p["username"] or str(p["tg_user_id"])
-            lines.append(f"• {name} — {p['points']} баллов")
-        await callback.message.answer("\n".join(lines))
+        await callback.answer()
+        return
+
+    await callback.message.answer("👥 <b>ИГРОКИ</b>")
+    for p in players[:100]:
+        name = p["first_name"] or p["username"] or str(p["tg_user_id"])
+        await callback.message.answer(
+            f"<b>{name}</b>\n"
+            f"Баллы: {p['points']}\n"
+            f"День: {p['current_day']} / 21\n"
+            f"ID: <code>{p['tg_user_id']}</code>",
+            reply_markup=admin_player_actions(p["tg_user_id"]),
+        )
+
     await callback.answer()
 
 
-@dp.message(Command("points"))
-async def points_command(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    parts = message.text.split(maxsplit=3)
-    if len(parts) < 3:
-        await message.answer("Формат: <code>/points USER_ID 100 причина</code>")
-        return
-    try:
-        user_id = int(parts[1])
-        delta = int(parts[2])
-    except ValueError:
-        await message.answer("USER_ID и количество баллов должны быть числами.")
+@dp.callback_query(F.data.startswith("admin_delete_player:"))
+async def admin_delete_player(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
         return
 
-    reason = parts[3] if len(parts) > 3 else "Бонус ACTIVATION"
-    try:
-        total = await db.add_points(user_id, delta, reason)
-        player = await db.get_player(user_id)
-    except ValueError as e:
-        await message.answer(str(e))
+    user_id = int(callback.data.split(":", 1)[1])
+    player = await db.get_player(user_id)
+    if not player:
+        await callback.answer("Игрок уже удалён.", show_alert=True)
         return
 
-    name = player["first_name"] or player["username"] or "Игрок"
-    card = points_card(name, delta, total, reason)
-
-    await bot.send_photo(
-        user_id,
-        FSInputFile(card),
-        caption=(
-            f"🔥 <b>+{delta} БАЛЛОВ</b>\n\n"
-            f"{reason}\n\n"
-            f"Всего: <b>{total}</b>"
-        ),
+    name = player["first_name"] or player["username"] or str(user_id)
+    await callback.message.answer(
+        f"🗑 <b>Удалить игрока {name}?</b>\n\n"
+        "Будут удалены профиль, баллы, задания, достижения и секретные миссии.\n"
+        "Личная ветка в админ-чате останется, чтобы история общения не потерялась.",
+        reply_markup=admin_confirm_delete_player(user_id),
     )
-    await message.answer(f"Готово. Игроку начислено {delta} баллов.")
+    await callback.answer()
 
 
-@dp.message(Command("secret"))
-async def secret_command(message: Message):
-    if not is_admin(message.from_user.id):
+@dp.callback_query(F.data.startswith("admin_confirm_delete_player:"))
+async def admin_confirm_delete_player_handler(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
         return
 
-    parts = message.text.split(maxsplit=3)
-    if len(parts) < 4:
-        await message.answer(
-            "Формат:\n"
-            "<code>/secret USER_ID 200 Название | Текст секретной миссии</code>"
-        )
+    user_id = int(callback.data.split(":", 1)[1])
+    topic_id = await db.delete_player(user_id)
+
+    if topic_id is None:
+        await callback.answer("Игрок уже удалён.", show_alert=True)
         return
 
-    try:
-        user_id = int(parts[1])
-        points = int(parts[2])
-    except ValueError:
-        await message.answer("USER_ID и количество баллов должны быть числами.")
-        return
-
-    payload = parts[3]
-    if "|" in payload:
-        title, description = [x.strip() for x in payload.split("|", 1)]
-    else:
-        title, description = "Секретная миссия", payload.strip()
-
-    try:
-        await db.create_secret_mission(user_id, title, description, points)
-    except ValueError as e:
-        await message.answer(str(e))
-        return
-
-    await bot.send_message(
-        user_id,
-        "🎴 <b>ТЕБЕ ОТКРЫТА СЕКРЕТНАЯ МИССИЯ</b>\n\n"
-        f"<b>{title}</b>\n\n"
-        f"{description}\n\n"
-        f"Награда: <b>+{points} баллов</b>",
+    await callback.message.answer(
+        "✅ Игрок удалён из ACTIVATION.\n"
+        "Его личная ветка сохранена в админ-чате."
     )
-    await message.answer("Секретная миссия отправлена.")
+    await callback.answer("Игрок удалён")
+
+
+@dp.callback_query(F.data == "admin_cancel_delete_player")
+async def admin_cancel_delete_player(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        return
+    await callback.answer("Удаление отменено")
 
 
 @dp.message(F.chat.type == "private")

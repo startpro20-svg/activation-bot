@@ -26,3 +26,15 @@ def enter_game_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔥 ВОЙТИ В ИГРУ", callback_data="enter_game")]
     ])
+
+
+def admin_player_actions(user_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Удалить игрока", callback_data=f"admin_delete_player:{user_id}")],
+    ])
+
+def admin_confirm_delete_player(user_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"admin_confirm_delete_player:{user_id}")],
+        [InlineKeyboardButton(text="↩️ Отмена", callback_data="admin_cancel_delete_player")],
+    ])

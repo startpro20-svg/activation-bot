@@ -27,11 +27,30 @@ def points_card(name: str, delta: int, total: int, reason: str) -> str:
 
 
 
+
 def _wrap_text(draw, text, font_obj, max_width):
     words = (text or "").split()
     lines = []
     current = ""
     for word in words:
+        # Break overly long single tokens too.
+        if draw.textlength(word, font=font_obj) > max_width:
+            if current:
+                lines.append(current)
+                current = ""
+            chunk = ""
+            for ch in word:
+                test = chunk + ch
+                if draw.textlength(test, font=font_obj) <= max_width:
+                    chunk = test
+                else:
+                    if chunk:
+                        lines.append(chunk)
+                    chunk = ch
+            if chunk:
+                current = chunk
+            continue
+
         test = word if not current else current + " " + word
         if draw.textlength(test, font=font_obj) <= max_width:
             current = test
@@ -39,9 +58,37 @@ def _wrap_text(draw, text, font_obj, max_width):
             if current:
                 lines.append(current)
             current = word
+
     if current:
         lines.append(current)
     return lines
+
+
+def _fit_text(draw, text, font_factory, max_width, max_height,
+              max_size=24, min_size=14, line_gap=8, max_lines=None):
+    """
+    Returns (font, lines, line_height) fitted to both width and height.
+    """
+    for size in range(max_size, min_size - 1, -1):
+        font_obj = font_factory(size)
+        lines = _wrap_text(draw, text, font_obj, max_width)
+        if max_lines is not None:
+            lines = lines[:max_lines]
+
+        bbox = draw.textbbox((0, 0), "Ag", font=font_obj)
+        line_height = (bbox[3] - bbox[1]) + line_gap
+        total_height = line_height * len(lines)
+
+        if total_height <= max_height:
+            return font_obj, lines, line_height
+
+    font_obj = font_factory(min_size)
+    lines = _wrap_text(draw, text, font_obj, max_width)
+    if max_lines is not None:
+        lines = lines[:max_lines]
+    bbox = draw.textbbox((0, 0), "Ag", font=font_obj)
+    line_height = (bbox[3] - bbox[1]) + line_gap
+    return font_obj, lines, line_height
 
 
 def player_card(
@@ -130,19 +177,42 @@ def player_card(
     draw.text((1055, 590), "—", font=f(38, True), fill=dark)
     draw.text((995, 640), "ТЕКУЩАЯ ЛИГА", font=f(16), fill=muted)
 
-    # Point A
+    # Point A — text always stays inside the glass block.
     draw.text((95, 710), "ТОЧКА А", font=f(24, True), fill=dark)
-    y = 765
-    for line in _wrap_text(draw, point_a, f(20), 350)[:7]:
-        draw.text((105, y), "• " + line, font=f(20), fill=dark)
-        y += 34
+    point_font, point_lines, point_lh = _fit_text(
+        draw,
+        point_a,
+        lambda s: f(s, False),
+        max_width=355,
+        max_height=205,
+        max_size=21,
+        min_size=13,
+        line_gap=7,
+        max_lines=9,
+    )
+    y = 760
+    for idx, line in enumerate(point_lines):
+        prefix = "• " if idx == 0 else "  "
+        draw.text((105, y), prefix + line, font=point_font, fill=dark)
+        y += point_lh
 
-    # Goal
+    # Goal — auto-wrap and auto-shrink to fit the target block.
     draw.text((555, 755), "ГЛАВНАЯ ЦЕЛЬ НА 21 ДЕНЬ", font=f(24, True), fill=dark)
-    y = 820
-    for line in _wrap_text(draw, goal_21, f(24), 560)[:5]:
-        draw.text((585, y), line, font=f(24), fill=dark)
-        y += 38
+    goal_font, goal_lines, goal_lh = _fit_text(
+        draw,
+        goal_21,
+        lambda s: f(s, False),
+        max_width=535,
+        max_height=150,
+        max_size=24,
+        min_size=14,
+        line_gap=8,
+        max_lines=6,
+    )
+    y = 815
+    for line in goal_lines:
+        draw.text((585, y), line, font=goal_font, fill=dark)
+        y += goal_lh
 
     # Footer
     draw.text((95, 1055), "ПОМНИ:", font=f(18), fill=muted)
