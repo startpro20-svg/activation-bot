@@ -167,7 +167,12 @@ def player_card(
 
     # Progress section
     draw.text((560, 485), "ТВОЙ ПРОГРЕСС", font=f(18, True), fill=muted)
-    draw.text((1030, 485), "0 / 1000 БАЛЛОВ", font=f(18), fill=cyan)
+    progress_label = "0 / 1000 БАЛЛОВ"
+    progress_font = f(14, True)
+    progress_bbox = draw.textbbox((0, 0), progress_label, font=progress_font)
+    progress_width = progress_bbox[2] - progress_bbox[0]
+    progress_x = 1155 - progress_width
+    draw.text((progress_x, 485), progress_label, font=progress_font, fill=cyan)
     draw.rounded_rectangle((560, 525, 1160, 538), radius=6, fill=(207, 221, 224, 255))
     draw.rounded_rectangle((560, 525, 585, 538), radius=6, fill=(56, 201, 210, 255))
     draw.text((620, 590), "0", font=f(38, True), fill=dark)
