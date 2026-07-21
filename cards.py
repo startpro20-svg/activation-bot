@@ -277,6 +277,11 @@ def progress_card(
     streak: int,
     completed_tasks: int = 0,
 ) -> str:
+    """
+    Progress card built on the approved ACTIVATION luxury-tech master visual.
+    Decorative glass bubbles, icons and chrome details stay untouched.
+    Only dynamic values are replaced.
+    """
     from PIL import ImageDraw, ImageFont
 
     template_path = Path(__file__).resolve().parent / "assets" / "progress_card_template.png"
@@ -291,55 +296,83 @@ def progress_card(
         font_path = Path(__file__).resolve().parent / "assets" / font_name
         return ImageFont.truetype(str(font_path), size)
 
-    dark = (26, 34, 38, 255)
-    cyan = (37, 177, 190, 255)
+    dark = (25, 34, 38, 255)
+    cyan = (35, 178, 190, 255)
     muted = (77, 91, 96, 255)
-    light_muted = (135, 153, 157, 255)
+    pale = (238, 244, 246, 242)
 
-    levels = [
-        (1, "ЛИЧНОСТЬ", 1000, "Фундамент новой реальности"),
-        (2, "ВИДИМОСТЬ", 2500, "Ты становишься заметнее"),
-        (3, "ВЛИЯНИЕ", 4500, "Тебя слышат и тебе доверяют"),
-        (4, "МАСШТАБ", 7000, "Ты превращаешь внимание в рост"),
+    # Approved template coordinates for four main rows.
+    rows = [
+        {"y": 55,  "num": "01", "name": "ЛИЧНОСТЬ",  "threshold": 1000},
+        {"y": 300, "num": "02", "name": "ВИДИМОСТЬ", "threshold": 2500},
+        {"y": 545, "num": "03", "name": "ВЛИЯНИЕ",   "threshold": 4500},
+        {"y": 790, "num": "04", "name": "МАСШТАБ",  "threshold": 7000},
     ]
-    card_y = [145, 390, 635, 880]
 
-    for (num, title, threshold, subtitle), y in zip(levels, card_y):
-        active = num == level_number
+    # Cover only demo progress values and demo bar fills.
+    # Keep glass bubbles, rings, icons and decorative elements untouched.
+    for idx, row in enumerate(rows, start=1):
+        y = row["y"]
 
-        # Level number
-        draw.text((103, y+52), f"{num:02d}", font=pf(44), fill=dark if active else light_muted)
+        # Right-side value area.
+        draw.rounded_rectangle(
+            (835, y + 55, 1005, y + 145),
+            radius=18,
+            fill=pale,
+        )
 
-        # Title
-        draw.text((250, y+28), "УРОВЕНЬ", font=pf(16, True), fill=cyan if active else light_muted)
-        draw.text((250, y+58), title, font=pf(34, True), fill=dark if active else light_muted)
-        draw.text((250, y+104), subtitle, font=pf(16), fill=muted if active else light_muted)
+        # Progress rail reset.
+        draw.rounded_rectangle(
+            (245, y + 132, 815, y + 154),
+            radius=10,
+            fill=(207, 221, 224, 255),
+        )
 
-        # Progress
-        level_points = points if active else (threshold if num < level_number else 0)
-        ratio = 0 if threshold <= 0 else max(0, min(1, level_points / threshold))
+        # Determine progress for each level.
+        if idx < level_number:
+            shown_points = row["threshold"]
+            ratio = 1.0
+        elif idx == level_number:
+            shown_points = points
+            ratio = 0 if row["threshold"] <= 0 else max(0, min(1, points / row["threshold"]))
+        else:
+            shown_points = 0
+            ratio = 0.0
 
-        bar_x1, bar_y1, bar_x2, bar_y2 = 250, y+135, 860, y+152
-        fill_x = bar_x1 + int((bar_x2 - bar_x1) * ratio)
-        if fill_x > bar_x1:
+        # Fill bar.
+        if ratio > 0:
+            fill_x = 245 + int((815 - 245) * ratio)
             draw.rounded_rectangle(
-                (bar_x1, bar_y1, fill_x, bar_y2),
-                radius=8,
-                fill=cyan if active else (166, 207, 210, 255),
+                (245, y + 132, fill_x, y + 154),
+                radius=10,
+                fill=cyan,
             )
 
-        # Right metric
-        draw.text((885, y+35), "ТВОЙ ПРОГРЕСС" if active else "ПОРОГ",
-                  font=pf(14, True), fill=muted if active else light_muted)
-        metric = f"{points} / {threshold}" if active else f"{threshold}"
-        draw.text((885, y+70), metric, font=pf(26, True), fill=cyan if active else light_muted)
-        draw.text((885, y+108), "БАЛЛОВ", font=pf(14), fill=muted if active else light_muted)
+        # Dynamic label.
+        if idx == level_number:
+            draw.text((845, y + 60), "ТВОЙ ПРОГРЕСС", font=pf(15, True), fill=muted)
+            value_text = f"{shown_points} / {row['threshold']}"
+            value_font = pf(28, True)
 
-    # Compact footer stats
-    draw.rounded_rectangle((270, 1120, 930, 1180), radius=22, fill=(255, 255, 255, 160))
-    draw.text((300, 1138), f"ДЕНЬ {day}/21", font=pf(16, True), fill=muted)
-    draw.text((520, 1138), f"СЕРИЯ {streak} ДН.", font=pf(16, True), fill=muted)
-    draw.text((735, 1138), f"ЗАДАНИЙ {completed_tasks}", font=pf(16, True), fill=muted)
+            # Keep value safely inside the right block.
+            while draw.textlength(value_text, font=value_font) > 145:
+                size = value_font.size - 1
+                if size < 16:
+                    break
+                value_font = pf(size, True)
+
+            draw.text((845, y + 92), value_text, font=value_font, fill=cyan)
+            draw.text((845, y + 126), "БАЛЛОВ", font=pf(14), fill=muted)
+        else:
+            draw.text((845, y + 60), "ПОРОГ", font=pf(15, True), fill=muted)
+            draw.text((845, y + 92), str(row["threshold"]), font=pf(27, True), fill=dark)
+            draw.text((845, y + 126), "БАЛЛОВ", font=pf(14), fill=muted)
+
+    # Footer stats: cover demo footer values only.
+    draw.rounded_rectangle((255, 1110, 945, 1180), radius=26, fill=(248, 251, 251, 244))
+    draw.text((295, 1132), f"ДЕНЬ {day}/21", font=pf(16, True), fill=muted)
+    draw.text((505, 1132), f"СЕРИЯ {streak} ДН.", font=pf(16, True), fill=muted)
+    draw.text((735, 1132), f"ЗАДАНИЙ {completed_tasks}", font=pf(16, True), fill=muted)
 
     out_path = OUT / f"progress_{level_number}_{points}.jpg"
     canvas.convert("RGB").save(out_path, quality=96)
