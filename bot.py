@@ -1,4 +1,5 @@
 from pathlib import Path
+from PIL import Image
 import asyncio
 import logging
 
@@ -181,8 +182,9 @@ async def onboarding_goal(message: Message, state: FSMContext):
     await state.update_data(goal_21=message.text.strip())
     await state.set_state(PlayerOnboarding.photo)
     await message.answer(
-        "📸 Теперь отправь <b>свою фотографию</b>.\n\n"
-        "Она станет частью твоей персональной карты игрока ACTIVATION."
+        "📸 Теперь отправь <b>квадратную фотографию 1:1</b>.\n\n"
+        "Важно: отправь именно фото, а не скриншот карточки. "
+        "Бот вставит его в квадратную рамку без обрезки."
     )
 
 
@@ -191,18 +193,6 @@ async def onboarding_photo(message: Message, state: FSMContext):
     data = await state.get_data()
 
     photo = message.photo[-1]
-
-    # Принимаем только квадратное фото. Небольшой допуск нужен из-за
-    # возможного сжатия Telegram, но визуально изображение должно быть 1:1.
-    side_ratio = photo.width / photo.height if photo.height else 0
-    if not 0.98 <= side_ratio <= 1.02:
-        await message.answer(
-            "❌ <b>Фото должно быть квадратным — 1:1.</b>\n\n"
-            "Обрежь фотографию квадратом и отправь ещё раз. "
-            "Бот вставит её в карту игрока без обрезки."
-        )
-        return
-
     file = await bot.get_file(photo.file_id)
 
     temp_dir = Path("/tmp/activation_onboarding")
@@ -210,6 +200,25 @@ async def onboarding_photo(message: Message, state: FSMContext):
     photo_path = temp_dir / f"{message.from_user.id}.jpg"
 
     await bot.download_file(file.file_path, destination=photo_path)
+
+    # Принимаем только квадратное фото 1:1. Ничего не обрезаем автоматически.
+    try:
+        with Image.open(photo_path) as uploaded_photo:
+            width, height = uploaded_photo.size
+    except Exception:
+        photo_path.unlink(missing_ok=True)
+        await message.answer("Не удалось открыть изображение. Отправь другое квадратное фото 1:1.")
+        return
+
+    # Telegram может изменить размер на несколько пикселей, поэтому допускаем до 2% разницы.
+    if min(width, height) < 500 or abs(width - height) / max(width, height) > 0.02:
+        photo_path.unlink(missing_ok=True)
+        await message.answer(
+            "❌ Фото не подходит.\n\n"
+            "Отправь <b>квадратное фото 1:1</b> размером не менее 500 × 500 px. "
+            "Бот вставит его в рамку целиком, без обрезки."
+        )
+        return
 
     # Сохраняем профиль.
     await db.save_player_profile(
@@ -251,7 +260,6 @@ async def onboarding_photo(message: Message, state: FSMContext):
         data["occupation"],
         data["point_a"],
         data["goal_21"],
-        username=message.from_user.username or "",
     )
 
     await message.answer_photo(
