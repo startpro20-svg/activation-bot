@@ -177,6 +177,38 @@ class Database:
             cur = await db.execute("SELECT * FROM players ORDER BY created_at ASC")
             return await cur.fetchall()
 
+    async def public_players(self, exclude_tg_user_id: int, limit: int = 100):
+        """Return only fields that are allowed in the public players section."""
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                """
+                SELECT tg_user_id, first_name, occupation, photo_file_id,
+                       points, current_day
+                FROM players
+                WHERE profile_complete=1 AND tg_user_id<>?
+                ORDER BY first_name COLLATE NOCASE ASC, created_at ASC
+                LIMIT ?
+                """,
+                (exclude_tg_user_id, limit),
+            )
+            return await cur.fetchall()
+
+    async def get_public_player(self, tg_user_id: int):
+        """Return one completed player without private onboarding answers."""
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                """
+                SELECT tg_user_id, first_name, occupation, photo_file_id,
+                       points, current_day
+                FROM players
+                WHERE tg_user_id=? AND profile_complete=1
+                """,
+                (tg_user_id,),
+            )
+            return await cur.fetchone()
+
     async def create_task(self, title: str, description: str, points: int, created_by: int):
         async with aiosqlite.connect(self.path) as db:
             cur = await db.execute(

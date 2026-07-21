@@ -6,6 +6,19 @@ def player_menu():
         [InlineKeyboardButton(text="🎮 Мой прогресс", callback_data="progress")],
         [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="leaderboard")],
         [InlineKeyboardButton(text="🏅 Достижения", callback_data="achievements")],
+        [InlineKeyboardButton(text="👥 Игроки", callback_data="players")],
+    ])
+
+
+def public_players_keyboard(players):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=player["first_name"] or "Игрок",
+                callback_data=f"public_player:{player['tg_user_id']}",
+            )
+        ]
+        for player in players
     ])
 
 def admin_menu():

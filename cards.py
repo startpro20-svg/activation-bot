@@ -264,6 +264,136 @@ def player_card(
     return str(out_path)
 
 
+def public_player_card(
+    photo_path: str,
+    name: str,
+    occupation: str,
+    level_number: int,
+    level_name: str,
+    points: int,
+    day: int,
+    achievement_name: str,
+    output_id: int,
+) -> str:
+    """
+    Separate public version of the ACTIVATION player card.
+
+    The function intentionally has no point_a or goal_21 arguments, so private
+    onboarding answers cannot be passed into this render by mistake.
+    """
+    template_path = Path(__file__).resolve().parent / "assets" / "public_player_card_template.png"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Public player template not found: {template_path}")
+
+    canvas = Image.open(template_path).convert("RGBA")
+    draw = ImageDraw.Draw(canvas)
+
+    def f(size, bold=False):
+        font_name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+        font_path = Path(__file__).resolve().parent / "assets" / font_name
+        if not font_path.exists():
+            raise FileNotFoundError(f"Bundled font not found: {font_path}")
+        return ImageFont.truetype(str(font_path), size)
+
+    dark = (24, 34, 38, 255)
+    muted = (71, 92, 97, 255)
+    cyan = (33, 175, 190, 255)
+    pale = (244, 248, 249, 245)
+
+    # The photo follows the already approved 1:1 placement and proportions.
+    photo = Image.open(photo_path).convert("RGB")
+    PHOTO_X, PHOTO_Y = 72, 164
+    PHOTO_W = PHOTO_H = 430
+    photo = photo.resize((PHOTO_W, PHOTO_H), Image.Resampling.LANCZOS)
+
+    mask = Image.new("L", (PHOTO_W, PHOTO_H), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.rounded_rectangle((0, 0, PHOTO_W - 1, PHOTO_H - 1), radius=34, fill=255)
+    photo_rgba = photo.convert("RGBA")
+    photo_rgba.putalpha(mask)
+    canvas.alpha_composite(photo_rgba, (PHOTO_X, PHOTO_Y))
+
+    name_text = (name or "").upper()
+    name_size = 42
+    name_font = f(name_size, True)
+    while draw.textlength(name_text, font=name_font) > 405 and name_size > 12:
+        name_size -= 1
+        name_font = f(name_size, True)
+    draw.text((560, 280), name_text, font=name_font, fill=dark)
+
+    occupation_font, occupation_lines, occupation_lh = _fit_text(
+        draw,
+        occupation or "",
+        lambda size: f(size),
+        max_width=405,
+        max_height=48,
+        max_size=22,
+        min_size=13,
+        line_gap=4,
+        max_lines=2,
+    )
+    occupation_y = 350
+    for line in occupation_lines:
+        draw.text((560, occupation_y), line, font=occupation_font, fill=muted)
+        occupation_y += occupation_lh
+
+    draw.text((1070, 300), str(level_number), font=f(56, True), fill=dark)
+    level_font, level_lines, _ = _fit_text(
+        draw,
+        level_name,
+        lambda size: f(size, True),
+        max_width=150,
+        max_height=28,
+        max_size=18,
+        min_size=12,
+        line_gap=2,
+        max_lines=1,
+    )
+    level_label = level_lines[0] if level_lines else ""
+    level_width = draw.textlength(level_label, font=level_font)
+    draw.text((1099 - level_width / 2, 380), level_label, font=level_font, fill=cyan)
+
+    # Public game statistics. Points are shown without a global maximum.
+    points_text = str(max(0, points))
+    points_width = draw.textlength(points_text, font=f(22, True))
+    draw.text((1080 - points_width, 485), points_text, font=f(22, True), fill=cyan)
+
+    draw.text((620, 590), points_text, font=f(38, True), fill=dark, anchor="mm")
+    draw.text((820, 590), str(max(1, day)), font=f(38, True), fill=dark, anchor="mm")
+
+    achievement_font, achievement_lines, _ = _fit_text(
+        draw,
+        achievement_name,
+        lambda size: f(size, True),
+        max_width=150,
+        max_height=24,
+        max_size=16,
+        min_size=11,
+        line_gap=2,
+        max_lines=1,
+    )
+    achievement_label = achievement_lines[0] if achievement_lines else ""
+    achievement_width = draw.textlength(achievement_label, font=achievement_font)
+    draw.text((1061 - achievement_width / 2, 650), achievement_label, font=achievement_font, fill=muted)
+
+    # Public-only lower block: no Point A and no 21-day goal.
+    draw.text((105, 865), f"ДЕНЬ {max(1, day)} ИЗ 21", font=f(28, True), fill=cyan)
+
+    public_achievement_size = 30
+    public_achievement_font = f(public_achievement_size, True)
+    while (
+        draw.textlength(achievement_name, font=public_achievement_font) > 205
+        and public_achievement_size > 14
+    ):
+        public_achievement_size -= 1
+        public_achievement_font = f(public_achievement_size, True)
+    draw.text((955, 805), achievement_name, font=public_achievement_font, fill=dark)
+
+    out_path = OUT / f"public_player_card_{output_id}.jpg"
+    canvas.convert("RGB").save(out_path, quality=96)
+    return str(out_path)
+
+
 def progress_card(
     level_number: int,
     level_name: str,

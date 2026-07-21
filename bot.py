@@ -12,8 +12,8 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 
 from config import load_config
 from db import Database
-from cards import points_card, player_card, progress_card
-from keyboards import player_menu, admin_menu, confirm_task, enter_game_keyboard, admin_player_actions, admin_confirm_delete_player
+from cards import points_card, player_card, public_player_card, progress_card
+from keyboards import player_menu, admin_menu, confirm_task, enter_game_keyboard, public_players_keyboard, admin_player_actions, admin_confirm_delete_player
 
 logging.basicConfig(level=logging.INFO)
 
@@ -48,6 +48,17 @@ def is_admin(user_id: int) -> bool:
 
 def display_name(user) -> str:
     return user.full_name or user.username or str(user.id)
+
+
+def public_level(points: int) -> tuple[int, str]:
+    """Use the same currently configured level thresholds as the progress card."""
+    if points < 1000:
+        return 1, "ЛИЧНОСТЬ"
+    if points < 2500:
+        return 2, "ВИДИМОСТЬ"
+    if points < 4500:
+        return 3, "ВЛИЯНИЕ"
+    return 4, "МАСШТАБ"
 
 
 async def ensure_player(message: Message):
@@ -376,6 +387,86 @@ async def achievements(callback: CallbackQuery):
     await callback.message.answer(
         "🏅 <b>ТВОИ ДОСТИЖЕНИЯ</b>\n\n"
         "Некоторые награды скрыты и откроются неожиданно 👀"
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "players")
+async def players(callback: CallbackQuery):
+    viewer = await db.get_player(callback.from_user.id)
+    if not viewer or not viewer["profile_complete"]:
+        await callback.answer("Сначала создай карту игрока", show_alert=True)
+        return
+
+    rows = await db.public_players(exclude_tg_user_id=callback.from_user.id)
+    if not rows:
+        await callback.message.answer(
+            "👥 <b>ИГРОКИ ACTIVATION</b>\n\n"
+            "Другие участники появятся здесь после регистрации."
+        )
+        await callback.answer()
+        return
+
+    await callback.message.answer(
+        "👥 <b>ИГРОКИ ACTIVATION</b>\n\n"
+        "Выбери участника, чтобы посмотреть его публичную карточку.",
+        reply_markup=public_players_keyboard(rows),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("public_player:"))
+async def show_public_player(callback: CallbackQuery):
+    viewer = await db.get_player(callback.from_user.id)
+    if not viewer or not viewer["profile_complete"]:
+        await callback.answer("Сначала создай карту игрока", show_alert=True)
+        return
+
+    try:
+        player_id = int(callback.data.split(":", 1)[1])
+    except (TypeError, ValueError):
+        await callback.answer("Карточка недоступна", show_alert=True)
+        return
+
+    public_player = await db.get_public_player(player_id)
+    if not public_player or not public_player["photo_file_id"]:
+        await callback.answer("Карточка игрока недоступна", show_alert=True)
+        return
+
+    photo_dir = Path("/tmp/activation_public_players")
+    photo_dir.mkdir(parents=True, exist_ok=True)
+    photo_path = photo_dir / f"{player_id}.jpg"
+
+    try:
+        telegram_file = await bot.get_file(public_player["photo_file_id"])
+        await bot.download_file(telegram_file.file_path, destination=photo_path)
+
+        level_number, level_name = public_level(public_player["points"])
+        card_path = public_player_card(
+            photo_path=str(photo_path),
+            name=public_player["first_name"] or "Игрок",
+            occupation=public_player["occupation"] or "Участник ACTIVATION 21",
+            level_number=level_number,
+            level_name=level_name,
+            points=public_player["points"],
+            day=public_player["current_day"],
+            achievement_name=level_name,
+            output_id=player_id,
+        )
+    except Exception:
+        logging.exception("Public player card generation failed")
+        await callback.answer("Не удалось открыть карточку. Попробуй ещё раз.", show_alert=True)
+        return
+
+    await callback.message.answer_photo(
+        FSInputFile(card_path),
+        caption=(
+            "🎴 <b>ПУБЛИЧНАЯ КАРТА ИГРОКА</b>\n\n"
+            f"Уровень: <b>{level_number:02d} — {level_name}</b>\n"
+            f"Баллы: <b>{public_player['points']}</b>\n"
+            f"Дней в игре: <b>{public_player['current_day']}</b>\n"
+            f"Ачивка: <b>{level_name}</b>"
+        ),
     )
     await callback.answer()
 
