@@ -15,6 +15,11 @@ CREATE TABLE IF NOT EXISTS players (
     streak INTEGER NOT NULL DEFAULT 0,
     max_streak INTEGER NOT NULL DEFAULT 0,
     current_day INTEGER NOT NULL DEFAULT 1,
+    occupation TEXT,
+    point_a TEXT,
+    goal_21 TEXT,
+    photo_file_id TEXT,
+    profile_complete INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -79,6 +84,23 @@ class Database:
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.path) as db:
             await db.executescript(SCHEMA)
+
+            # Безопасная миграция для уже существующей базы.
+            cur = await db.execute("PRAGMA table_info(players)")
+            columns = {row[1] for row in await cur.fetchall()}
+
+            migrations = {
+                "occupation": "ALTER TABLE players ADD COLUMN occupation TEXT",
+                "point_a": "ALTER TABLE players ADD COLUMN point_a TEXT",
+                "goal_21": "ALTER TABLE players ADD COLUMN goal_21 TEXT",
+                "photo_file_id": "ALTER TABLE players ADD COLUMN photo_file_id TEXT",
+                "profile_complete": "ALTER TABLE players ADD COLUMN profile_complete INTEGER NOT NULL DEFAULT 0",
+            }
+
+            for column, sql in migrations.items():
+                if column not in columns:
+                    await db.execute(sql)
+
             await db.commit()
 
     async def upsert_player(self, user):
@@ -173,6 +195,31 @@ class Database:
             )
             await db.commit()
             return total
+
+    async def save_player_profile(
+        self,
+        tg_user_id: int,
+        first_name: str,
+        occupation: str,
+        point_a: str,
+        goal_21: str,
+        photo_file_id: str,
+    ):
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """
+                UPDATE players
+                SET first_name=?,
+                    occupation=?,
+                    point_a=?,
+                    goal_21=?,
+                    photo_file_id=?,
+                    profile_complete=1
+                WHERE tg_user_id=?
+                """,
+                (first_name, occupation, point_a, goal_21, photo_file_id, tg_user_id),
+            )
+            await db.commit()
 
     async def leaderboard(self, limit: int = 20):
         async with aiosqlite.connect(self.path) as db:

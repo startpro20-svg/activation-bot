@@ -1,3 +1,4 @@
+from pathlib import Path
 import asyncio
 import logging
 
@@ -11,7 +12,7 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 
 from config import load_config
 from db import Database
-from cards import points_card
+from cards import points_card, player_card
 from keyboards import player_menu, admin_menu, confirm_task, enter_game_keyboard
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +32,14 @@ class CreateTask(StatesGroup):
     description = State()
     points = State()
     confirm = State()
+
+
+class PlayerOnboarding(StatesGroup):
+    name = State()
+    occupation = State()
+    point_a = State()
+    goal_21 = State()
+    photo = State()
 
 
 def is_admin(user_id: int) -> bool:
@@ -80,9 +89,9 @@ async def start(message: Message):
         )
         return
 
-    # Если игрок уже зарегистрирован — сразу открываем игровое меню.
+    # Полностью зарегистрированный игрок сразу попадает в игру.
     existing_player = await db.get_player(message.from_user.id)
-    if existing_player:
+    if existing_player and existing_player["profile_complete"]:
         await message.answer(
             "🔥 <b>ACTIVATION</b>\n\n"
             "Ты уже в игре.",
@@ -106,46 +115,175 @@ async def start(message: Message):
 
 
 @dp.callback_query(F.data == "enter_game")
-async def enter_game(callback: CallbackQuery):
+async def enter_game(callback: CallbackQuery, state: FSMContext):
     if is_admin(callback.from_user.id):
         await callback.answer()
         return
 
-    # Регистрируем игрока только после осознанного входа в игру.
-    class UserProxy:
-        id = callback.from_user.id
-        username = callback.from_user.username
-        first_name = callback.from_user.first_name
-        last_name = callback.from_user.last_name
+    # Создаём черновую запись игрока, но личную ветку пока не создаём.
+    await db.upsert_player(callback.from_user)
 
-    player = await db.upsert_player(UserProxy())
+    await state.clear()
+    await state.set_state(PlayerOnboarding.name)
 
+    await callback.message.answer(
+        "🎴 <b>СОЗДАЁМ ТВОЮ КАРТУ ИГРОКА</b>
+
+"
+        "Для начала — как тебя зовут?
+"
+        "Напиши имя, которое будет на твоей карточке."
+    )
+    await callback.answer()
+
+
+@dp.message(PlayerOnboarding.name)
+async def onboarding_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text.strip())
+    await state.set_state(PlayerOnboarding.occupation)
+    await message.answer(
+        "Чем ты занимаешься?
+
+"
+        "Например: <i>эксперт по продвижению, фотограф, психолог, предприниматель</i>."
+    )
+
+
+@dp.message(PlayerOnboarding.occupation)
+async def onboarding_occupation(message: Message, state: FSMContext):
+    await state.update_data(occupation=message.text.strip())
+    await state.set_state(PlayerOnboarding.point_a)
+    await message.answer(
+        "📍 <b>ТВОЯ ТОЧКА А</b>
+
+"
+        "Опиши коротко, где ты сейчас в личном бренде.
+"
+        "Например: <i>редко веду блог, 1200 подписчиков, почти нет заявок</i>."
+    )
+
+
+@dp.message(PlayerOnboarding.point_a)
+async def onboarding_point_a(message: Message, state: FSMContext):
+    await state.update_data(point_a=message.text.strip())
+    await state.set_state(PlayerOnboarding.goal_21)
+    await message.answer(
+        "🎯 <b>ТВОЯ ЦЕЛЬ НА 21 ДЕНЬ</b>
+
+"
+        "Что должно измениться за эти 21 день, чтобы ты сказала:
+"
+        "<b>«Я реально активировалась»?</b>"
+    )
+
+
+@dp.message(PlayerOnboarding.goal_21)
+async def onboarding_goal(message: Message, state: FSMContext):
+    await state.update_data(goal_21=message.text.strip())
+    await state.set_state(PlayerOnboarding.photo)
+    await message.answer(
+        "📸 Теперь отправь <b>свою фотографию</b>.
+
+"
+        "Она станет частью твоей персональной карты игрока ACTIVATION."
+    )
+
+
+@dp.message(PlayerOnboarding.photo, F.photo)
+async def onboarding_photo(message: Message, state: FSMContext):
+    data = await state.get_data()
+
+    photo = message.photo[-1]
+    file = await bot.get_file(photo.file_id)
+
+    temp_dir = Path("/tmp/activation_onboarding")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    photo_path = temp_dir / f"{message.from_user.id}.jpg"
+
+    await bot.download_file(file.file_path, destination=photo_path)
+
+    # Сохраняем профиль.
+    await db.save_player_profile(
+        tg_user_id=message.from_user.id,
+        first_name=data["name"],
+        occupation=data["occupation"],
+        point_a=data["point_a"],
+        goal_21=data["goal_21"],
+        photo_file_id=photo.file_id,
+    )
+
+    # Создаём личную ветку только после завершения карты игрока.
+    player = await db.get_player(message.from_user.id)
     if not player["topic_id"]:
         topic = await bot.create_forum_topic(
             chat_id=config.admin_chat_id,
-            name=display_name(callback.from_user)[:120],
+            name=data["name"][:120],
         )
-        await db.set_topic(callback.from_user.id, topic.message_thread_id)
+        await db.set_topic(message.from_user.id, topic.message_thread_id)
 
         await bot.send_message(
             chat_id=config.admin_chat_id,
             message_thread_id=topic.message_thread_id,
             text=(
-                "👤 <b>НОВЫЙ ИГРОК</b>\n\n"
-                f"Имя: {display_name(callback.from_user)}\n"
-                f"ID: <code>{callback.from_user.id}</code>\n"
-                f"Username: @{callback.from_user.username or '—'}\n\n"
-                "Все сообщения из этой ветки бот отправляет игроку."
+                "👤 <b>НОВЫЙ ИГРОК</b>
+
+"
+                f"Имя: {data['name']}
+"
+                f"Чем занимается: {data['occupation']}
+
+"
+                f"📍 <b>Точка А:</b> {data['point_a']}
+
+"
+                f"🎯 <b>Цель на 21 день:</b> {data['goal_21']}
+
+"
+                f"ID: <code>{message.from_user.id}</code>
+"
+                f"Username: @{message.from_user.username or '—'}"
             ),
         )
 
-    await callback.message.answer(
-        "🔥 <b>ТЫ В ИГРЕ</b>\n\n"
-        "Твоя точка старта зафиксирована. "
-        "С этого момента каждое действие имеет значение.",
+    card_path = player_card(
+        str(photo_path),
+        data["name"],
+        data["occupation"],
+        data["point_a"],
+        data["goal_21"],
+    )
+
+    await message.answer_photo(
+        FSInputFile(card_path),
+        caption=(
+            "🎴 <b>ТВОЯ КАРТА ИГРОКА ГОТОВА</b>
+
+"
+            "Уровень 01 — <b>ЛИЧНОСТЬ</b>
+"
+            "Баллы: <b>0</b>
+
+"
+            "🔥 <b>ТЫ В ИГРЕ</b>"
+        ),
         reply_markup=player_menu(),
     )
-    await callback.answer("Добро пожаловать в ACTIVATION 🔥")
+
+    # Дублируем карточку в персональную ветку ведущей.
+    player = await db.get_player(message.from_user.id)
+    await bot.send_photo(
+        chat_id=config.admin_chat_id,
+        message_thread_id=player["topic_id"],
+        photo=FSInputFile(card_path),
+        caption="🎴 Стартовая карта игрока",
+    )
+
+    await state.clear()
+
+
+@dp.message(PlayerOnboarding.photo)
+async def onboarding_photo_invalid(message: Message):
+    await message.answer("Пришли, пожалуйста, фотографию как фото 📸")
 
 
 @dp.message(Command("admin"))
