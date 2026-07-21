@@ -89,13 +89,23 @@ async def start(message: Message):
         )
         return
 
-    # Полностью зарегистрированный игрок сразу попадает в игру.
+    # Telegram user_id — постоянный ID игрока.
+    # Повторный /start, удаление чата и повторный вход ничего не сбрасывают.
     existing_player = await db.get_player(message.from_user.id)
-    if existing_player and existing_player["profile_complete"]:
+    if existing_player:
+        if existing_player["profile_complete"]:
+            await message.answer(
+                "🔥 <b>ACTIVATION</b>\n\n"
+                "Ты уже в игре. Продолжаем с того места, где ты остановилась.",
+                reply_markup=player_menu(),
+            )
+            return
+
+        # Профиль уже был начат, но не закончен. Не создаём нового игрока/ветку.
         await message.answer(
             "🔥 <b>ACTIVATION</b>\n\n"
-            "Ты уже в игре.",
-            reply_markup=player_menu(),
+            "Твой профиль уже создан. Давай закончим карту игрока.",
+            reply_markup=enter_game_keyboard(),
         )
         return
 
@@ -121,7 +131,7 @@ async def enter_game(callback: CallbackQuery, state: FSMContext):
         return
 
     # Создаём черновую запись игрока, но личную ветку пока не создаём.
-    await db.upsert_player(callback.from_user)
+    await db.get_or_create_player(callback.from_user)
 
     await state.clear()
     await state.set_state(PlayerOnboarding.name)
@@ -201,6 +211,7 @@ async def onboarding_photo(message: Message, state: FSMContext):
 
     # Создаём личную ветку только после завершения карты игрока.
     player = await db.get_player(message.from_user.id)
+    # Никогда не создаём вторую ветку для уже известного игрока.
     if not player["topic_id"]:
         topic = await bot.create_forum_topic(
             chat_id=config.admin_chat_id,

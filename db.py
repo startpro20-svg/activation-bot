@@ -128,6 +128,32 @@ class Database:
             )
             return await cur.fetchone()
 
+    async def player_exists(self, tg_user_id: int) -> bool:
+        player = await self.get_player(tg_user_id)
+        return player is not None
+
+    async def get_or_create_player(self, user):
+        """
+        Telegram user_id is the permanent identity key.
+        Existing progress/profile/topic are never reset here.
+        """
+        existing = await self.get_player(user.id)
+        if existing:
+            # Only refresh public Telegram identity fields.
+            async with aiosqlite.connect(self.path) as db:
+                await db.execute(
+                    """
+                    UPDATE players
+                    SET username=?, first_name=COALESCE(NULLIF(first_name, ''), ?), last_name=?
+                    WHERE tg_user_id=?
+                    """,
+                    (user.username, user.first_name, user.last_name, user.id),
+                )
+                await db.commit()
+            return await self.get_player(user.id)
+
+        return await self.upsert_player(user)
+
     async def get_player_by_topic(self, topic_id: int):
         async with aiosqlite.connect(self.path) as db:
             db.row_factory = aiosqlite.Row

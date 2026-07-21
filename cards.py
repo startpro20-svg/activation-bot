@@ -95,16 +95,11 @@ def player_card(
 
     # Fonts
     def f(size, bold=False):
-        candidates = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
-        ]
-        for p in candidates:
-            try:
-                return ImageFont.truetype(p, size)
-            except Exception:
-                pass
-        return ImageFont.load_default()
+        font_name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+        font_path = Path(__file__).resolve().parent / "assets" / font_name
+        if not font_path.exists():
+            raise FileNotFoundError(f"Bundled font not found: {font_path}")
+        return ImageFont.truetype(str(font_path), size)
 
     dark = (24, 34, 38, 255)
     muted = (71, 92, 97, 255)
