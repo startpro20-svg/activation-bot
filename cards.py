@@ -152,13 +152,51 @@ def player_card(
     muted = (71, 92, 97, 255)
     cyan = (33, 175, 190, 255)
 
-    # Dynamic identity block
-    draw.text((560, 280), name[:24].upper(), font=f(42, True), fill=dark)
+    # Dynamic identity block with hard visual boundaries.
+    name_font, name_lines, name_lh = _fit_text(
+        draw,
+        (name or "").upper(),
+        lambda s: f(s, True),
+        max_width=405,
+        max_height=58,
+        max_size=42,
+        min_size=20,
+        line_gap=4,
+        max_lines=1,
+    )
+    draw.text((560, 280), name_lines[0] if name_lines else "", font=name_font, fill=dark)
+
     uname = username.strip()
     if uname and not uname.startswith("@"):
         uname = "@" + uname
-    draw.text((560, 345), uname[:28] or "@PLAYER", font=f(25, False), fill=cyan)
-    draw.text((560, 395), occupation[:42], font=f(22, False), fill=muted)
+    username_font, username_lines, _ = _fit_text(
+        draw,
+        uname or "@PLAYER",
+        lambda s: f(s, False),
+        max_width=405,
+        max_height=34,
+        max_size=25,
+        min_size=15,
+        line_gap=2,
+        max_lines=1,
+    )
+    draw.text((560, 345), username_lines[0] if username_lines else "", font=username_font, fill=cyan)
+
+    occupation_font, occupation_lines, occupation_lh = _fit_text(
+        draw,
+        occupation or "",
+        lambda s: f(s, False),
+        max_width=405,
+        max_height=48,
+        max_size=22,
+        min_size=13,
+        line_gap=4,
+        max_lines=2,
+    )
+    oy = 392
+    for line in occupation_lines:
+        draw.text((560, oy), line, font=occupation_font, fill=muted)
+        oy += occupation_lh
 
     # Level
     draw.text((1038, 250), "УРОВЕНЬ", font=f(18), fill=muted)
@@ -167,7 +205,7 @@ def player_card(
 
     # Progress section
     draw.text((560, 485), "ТВОЙ ПРОГРЕСС", font=f(18, True), fill=muted)
-    draw.text((1030, 485), "0 / 1000 XP", font=f(18), fill=cyan)
+    draw.text((1030, 485), "0 / 1000 БАЛЛОВ", font=f(18), fill=cyan)
     draw.rounded_rectangle((560, 525, 1160, 538), radius=6, fill=(207, 221, 224, 255))
     draw.rounded_rectangle((560, 525, 585, 538), radius=6, fill=(56, 201, 210, 255))
     draw.text((620, 590), "0", font=f(38, True), fill=dark)
@@ -256,44 +294,52 @@ def progress_card(
     dark = (26, 34, 38, 255)
     cyan = (37, 177, 190, 255)
     muted = (77, 91, 96, 255)
-    white = (246, 249, 250, 250)
+    light_muted = (135, 153, 157, 255)
 
-    # Clean the active top level area while preserving the approved template.
-    draw.rounded_rectangle((245, 55, 1065, 235), radius=26, fill=white)
-    draw.ellipse((65, 55, 215, 205), fill=(246, 249, 250, 245))
-    draw.rounded_rectangle((1020, 70, 1135, 190), radius=22, fill=(246, 249, 250, 245))
+    levels = [
+        (1, "ЛИЧНОСТЬ", 1000, "Фундамент новой реальности"),
+        (2, "ВИДИМОСТЬ", 2500, "Ты становишься заметнее"),
+        (3, "ВЛИЯНИЕ", 4500, "Тебя слышат и тебе доверяют"),
+        (4, "МАСШТАБ", 7000, "Ты превращаешь внимание в рост"),
+    ]
+    card_y = [145, 390, 635, 880]
 
-    draw.text((92, 88), f"{level_number:02d}", font=pf(56), fill=dark)
-    draw.text((260, 70), "УРОВЕНЬ", font=pf(18, True), fill=cyan)
-    draw.text((260, 102), level_name.upper(), font=pf(36, True), fill=dark)
+    for (num, title, threshold, subtitle), y in zip(levels, card_y):
+        active = num == level_number
 
-    subtitles = {
-        "ЛИЧНОСТЬ": "Ты создаёшь фундамент своей новой реальности",
-        "ВИДИМОСТЬ": "Ты заявляешь о себе и притягиваешь внимание",
-        "ВЛИЯНИЕ": "Тебя слышат. Твои действия начинают менять других",
-        "МАСШТАБ": "Ты превращаешь внимание в возможности и рост",
-    }
-    draw.text(
-        (260, 152),
-        subtitles.get(level_name.upper(), "Ты продолжаешь двигаться дальше"),
-        font=pf(18),
-        fill=muted,
-    )
+        # Level number
+        draw.text((103, y+52), f"{num:02d}", font=pf(44), fill=dark if active else light_muted)
 
-    draw.text((820, 78), "ТВОЙ ПРОГРЕСС", font=pf(16, True), fill=muted)
-    draw.text((820, 115), f"{points} / {target_points}", font=pf(34, True), fill=cyan)
-    draw.text((820, 155), "БАЛЛОВ", font=pf(16), fill=muted)
+        # Title
+        draw.text((250, y+28), "УРОВЕНЬ", font=pf(16, True), fill=cyan if active else light_muted)
+        draw.text((250, y+58), title, font=pf(34, True), fill=dark if active else light_muted)
+        draw.text((250, y+104), subtitle, font=pf(16), fill=muted if active else light_muted)
 
-    bar_x1, bar_y1, bar_x2, bar_y2 = 260, 192, 790, 210
-    draw.rounded_rectangle((bar_x1, bar_y1, bar_x2, bar_y2), radius=8, fill=(207, 220, 223, 255))
-    ratio = 0 if target_points <= 0 else max(0, min(1, points / target_points))
-    fill_x = bar_x1 + int((bar_x2 - bar_x1) * ratio)
-    if fill_x > bar_x1:
-        draw.rounded_rectangle((bar_x1, bar_y1, fill_x, bar_y2), radius=8, fill=cyan)
+        # Progress
+        level_points = points if active else (threshold if num < level_number else 0)
+        ratio = 0 if threshold <= 0 else max(0, min(1, level_points / threshold))
 
-    draw.text((270, 220), f"ДЕНЬ {day}/21", font=pf(15, True), fill=muted)
-    draw.text((500, 220), f"СЕРИЯ {streak} ДН.", font=pf(15, True), fill=muted)
-    draw.text((730, 220), f"ЗАДАНИЙ {completed_tasks}", font=pf(15, True), fill=muted)
+        bar_x1, bar_y1, bar_x2, bar_y2 = 250, y+135, 860, y+152
+        fill_x = bar_x1 + int((bar_x2 - bar_x1) * ratio)
+        if fill_x > bar_x1:
+            draw.rounded_rectangle(
+                (bar_x1, bar_y1, fill_x, bar_y2),
+                radius=8,
+                fill=cyan if active else (166, 207, 210, 255),
+            )
+
+        # Right metric
+        draw.text((885, y+35), "ТВОЙ ПРОГРЕСС" if active else "ПОРОГ",
+                  font=pf(14, True), fill=muted if active else light_muted)
+        metric = f"{points} / {threshold}" if active else f"{threshold}"
+        draw.text((885, y+70), metric, font=pf(26, True), fill=cyan if active else light_muted)
+        draw.text((885, y+108), "БАЛЛОВ", font=pf(14), fill=muted if active else light_muted)
+
+    # Compact footer stats
+    draw.rounded_rectangle((270, 1120, 930, 1180), radius=22, fill=(255, 255, 255, 160))
+    draw.text((300, 1138), f"ДЕНЬ {day}/21", font=pf(16, True), fill=muted)
+    draw.text((520, 1138), f"СЕРИЯ {streak} ДН.", font=pf(16, True), fill=muted)
+    draw.text((735, 1138), f"ЗАДАНИЙ {completed_tasks}", font=pf(16, True), fill=muted)
 
     out_path = OUT / f"progress_{level_number}_{points}.jpg"
     canvas.convert("RGB").save(out_path, quality=96)
