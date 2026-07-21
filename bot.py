@@ -607,11 +607,10 @@ async def admin_send_broadcast(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Рассылка началась")
 
     players = await db.all_players()
-    recipients = [player for player in players if player["profile_complete"]]
     sent = 0
     failed = 0
 
-    for player in recipients:
+    for player in players:
         try:
             await bot.copy_message(
                 chat_id=player["tg_user_id"],
