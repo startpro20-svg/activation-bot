@@ -191,6 +191,18 @@ async def onboarding_photo(message: Message, state: FSMContext):
     data = await state.get_data()
 
     photo = message.photo[-1]
+
+    # Принимаем только квадратное фото. Небольшой допуск нужен из-за
+    # возможного сжатия Telegram, но визуально изображение должно быть 1:1.
+    side_ratio = photo.width / photo.height if photo.height else 0
+    if not 0.98 <= side_ratio <= 1.02:
+        await message.answer(
+            "❌ <b>Фото должно быть квадратным — 1:1.</b>\n\n"
+            "Обрежь фотографию квадратом и отправь ещё раз. "
+            "Бот вставит её в карту игрока без обрезки."
+        )
+        return
+
     file = await bot.get_file(photo.file_id)
 
     temp_dir = Path("/tmp/activation_onboarding")

@@ -104,7 +104,7 @@ def player_card(
     Генерация карты игрока поверх утвержденного master-template ACTIVATION.
     Дизайн не рисуется с нуля: бот только заменяет данные на готовом шаблоне.
     """
-    from PIL import ImageOps, ImageDraw, ImageFont
+    from PIL import ImageDraw, ImageFont
     from datetime import datetime
 
     template_path = Path(__file__).resolve().parent / "assets" / "player_card_template.png"
@@ -117,7 +117,9 @@ def player_card(
     # Шаблон 1248x1248. Координаты привязаны к согласованному макету.
     # Фото: квадрат слева сверху.
     photo = Image.open(photo_path).convert("RGB")
-    photo = ImageOps.fit(photo, (430, 430))
+    # Фото уже проверено ботом как квадратное. Только уменьшаем/увеличиваем
+    # до размера рамки — без crop, чтобы не обрезать лицо или голову.
+    photo = photo.resize((430, 430), Image.Resampling.LANCZOS)
     mask = Image.new("L", (430, 430), 0)
     md = ImageDraw.Draw(mask)
     md.rounded_rectangle((0, 0, 430, 430), radius=34, fill=255)
@@ -205,8 +207,8 @@ def player_card(
 
     # Progress section
     draw.text((560, 485), "ТВОЙ ПРОГРЕСС", font=f(18, True), fill=muted)
-    draw.text((1085, 485), "0", font=f(24, True), fill=cyan)
-    draw.text((1110, 490), "БАЛЛОВ", font=f(14), fill=cyan)
+    draw.text((1080, 485), "0", font=f(22, True), fill=cyan)
+    draw.text((1110, 489), "БАЛЛОВ", font=f(15), fill=cyan)
     draw.rounded_rectangle((560, 525, 1160, 538), radius=6, fill=(207, 221, 224, 255))
     draw.rounded_rectangle((560, 525, 585, 538), radius=6, fill=(56, 201, 210, 255))
     draw.text((620, 590), "0", font=f(38, True), fill=dark)
