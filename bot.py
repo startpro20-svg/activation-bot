@@ -130,6 +130,18 @@ async def enter_game(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
+    # Старые кнопки «Войти в игру» могут оставаться в переписке.
+    # Не позволяем завершённому игроку повторно запускать анкету.
+    existing_player = await db.get_player(callback.from_user.id)
+    if existing_player and existing_player["profile_complete"]:
+        await state.clear()
+        await callback.message.answer(
+            "Твоя карта игрока уже создана. Ты уже в игре ✨",
+            reply_markup=player_menu(),
+        )
+        await callback.answer("Анкета уже заполнена")
+        return
+
     # Создаём черновую запись игрока, но личную ветку пока не создаём.
     await db.get_or_create_player(callback.from_user)
 
