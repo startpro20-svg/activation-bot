@@ -228,6 +228,7 @@ async def onboarding_photo(message: Message, state: FSMContext):
         data["occupation"],
         data["point_a"],
         data["goal_21"],
+        username=message.from_user.username or "",
     )
 
     await message.answer_photo(

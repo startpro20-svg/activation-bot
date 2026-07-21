@@ -26,88 +26,140 @@ def points_card(name: str, delta: int, total: int, reason: str) -> str:
     return str(path)
 
 
+
+def _wrap_text(draw, text, font_obj, max_width):
+    words = (text or "").split()
+    lines = []
+    current = ""
+    for word in words:
+        test = word if not current else current + " " + word
+        if draw.textlength(test, font=font_obj) <= max_width:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
 def player_card(
     photo_path: str,
     name: str,
     occupation: str,
     point_a: str,
     goal_21: str,
+    username: str = "",
+    start_date: str = "",
 ) -> str:
-    """Стартовая карта игрока в утверждённой визуальной системе ACTIVATION."""
-    from PIL import ImageOps, ImageFilter
+    """
+    Генерация карты игрока поверх утвержденного master-template ACTIVATION.
+    Дизайн не рисуется с нуля: бот только заменяет данные на готовом шаблоне.
+    """
+    from PIL import ImageOps, ImageDraw, ImageFont
+    from datetime import datetime
 
-    W, H = 1080, 1350
-    canvas = Image.new("RGB", (W, H), (238, 244, 245))
+    template_path = Path(__file__).resolve().parent / "assets" / "player_card_template.png"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Template not found: {template_path}")
 
-    # Мягкий холодный световой фон.
-    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.ellipse((650, -180, 1250, 420), fill=(65, 226, 230, 38))
-    gd.ellipse((-250, 850, 450, 1550), fill=(70, 205, 218, 25))
-    glow = glow.filter(ImageFilter.GaussianBlur(85))
-    canvas = Image.alpha_composite(canvas.convert("RGBA"), glow)
-
+    canvas = Image.open(template_path).convert("RGBA")
     draw = ImageDraw.Draw(canvas)
 
-    # Верхний бренд-блок.
-    draw.text((70, 62), "ACTIVATION", font=font(52), fill=(18, 28, 31, 255))
-    draw.text((70, 126), "КАРТА ИГРОКА", font=font(25), fill=(62, 96, 100, 255))
-    draw.rounded_rectangle((820, 62, 1010, 126), radius=28,
-                           fill=(213, 250, 249, 230), outline=(86, 218, 218, 255), width=2)
-    draw.text((860, 80), "21 ДЕНЬ", font=font(22), fill=(21, 101, 105, 255))
-
-    # Стеклянная основная панель.
-    panel = Image.new("RGBA", (940, 1080), (255, 255, 255, 155))
-    pd = ImageDraw.Draw(panel)
-    pd.rounded_rectangle((0, 0, 939, 1079), radius=42,
-                         fill=(255, 255, 255, 165), outline=(255, 255, 255, 235), width=3)
-    panel = panel.filter(ImageFilter.GaussianBlur(0.4))
-    canvas.alpha_composite(panel, (70, 190))
-    draw = ImageDraw.Draw(canvas)
-
-    # Квадратное окно под фото — обязательная часть дизайн-системы.
+    # Шаблон 1248x1248. Координаты привязаны к согласованному макету.
+    # Фото: квадрат слева сверху.
     photo = Image.open(photo_path).convert("RGB")
-    photo = ImageOps.fit(photo, (400, 400))
-    photo_layer = Image.new("RGBA", (420, 420), (255, 255, 255, 0))
-    photo_layer.paste(photo, (10, 10))
-    mask = Image.new("L", (420, 420), 0)
+    photo = ImageOps.fit(photo, (430, 430))
+    mask = Image.new("L", (430, 430), 0)
     md = ImageDraw.Draw(mask)
-    md.rounded_rectangle((10, 10, 410, 410), radius=30, fill=255)
-    photo_layer.putalpha(mask)
-    canvas.alpha_composite(photo_layer, (110, 245))
-    draw.rounded_rectangle((120, 255, 520, 655), radius=30,
-                           outline=(87, 218, 218, 220), width=3)
+    md.rounded_rectangle((0, 0, 430, 430), radius=34, fill=255)
+    photo_rgba = photo.convert("RGBA")
+    photo_rgba.putalpha(mask)
+    canvas.alpha_composite(photo_rgba, (72, 132))
 
-    # Имя и статус.
-    draw.text((575, 270), name[:22].upper(), font=font(52), fill=(17, 29, 32, 255))
-    draw.text((575, 345), occupation[:34], font=font(27), fill=(65, 89, 93, 255))
+    # Фоновые плашки закрывают тестовые данные исходного макета,
+    # сохраняя сам визуальный дизайн карточки.
+    # Имя / ник / профессия
+    draw.rounded_rectangle((548, 258, 1000, 438), radius=24, fill=(244, 248, 249, 245))
+    # Уровень
+    draw.rounded_rectangle((1008, 220, 1190, 452), radius=24, fill=(244, 248, 249, 238))
+    # Прогресс и показатели
+    draw.rounded_rectangle((545, 460, 1180, 690), radius=20, fill=(244, 248, 249, 240))
+    # Точка А
+    draw.rounded_rectangle((75, 690, 500, 1000), radius=26, fill=(244, 248, 249, 242))
+    # Главная цель
+    draw.rounded_rectangle((530, 730, 1185, 1005), radius=26, fill=(244, 248, 249, 242))
+    # Нижняя подпись / дата
+    draw.rounded_rectangle((70, 1030, 1180, 1188), radius=22, fill=(244, 248, 249, 236))
 
-    draw.rounded_rectangle((575, 430, 925, 505), radius=24,
-                           fill=(223, 251, 250, 205), outline=(109, 224, 222, 230), width=2)
-    draw.text((605, 452), "УРОВЕНЬ 01  ·  ЛИЧНОСТЬ", font=font(23), fill=(25, 99, 103, 255))
+    # Fonts
+    def f(size, bold=False):
+        candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
+        ]
+        for p in candidates:
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                pass
+        return ImageFont.load_default()
 
-    draw.text((575, 550), "0", font=font(64), fill=(18, 31, 34, 255))
-    draw.text((655, 575), "БАЛЛОВ", font=font(23), fill=(69, 100, 103, 255))
+    dark = (24, 34, 38, 255)
+    muted = (71, 92, 97, 255)
+    cyan = (33, 175, 190, 255)
 
-    # Точка А.
-    draw.text((120, 735), "ТОЧКА А", font=font(25), fill=(38, 119, 122, 255))
-    draw.rounded_rectangle((110, 780, 970, 910), radius=28,
-                           fill=(247, 252, 252, 205), outline=(206, 228, 229, 255), width=2)
-    draw.text((145, 820), point_a[:78], font=font(28), fill=(29, 43, 46, 255))
+    # Dynamic identity block
+    draw.text((560, 280), name[:24].upper(), font=f(42, True), fill=dark)
+    uname = username.strip()
+    if uname and not uname.startswith("@"):
+        uname = "@" + uname
+    draw.text((560, 345), uname[:28] or "@PLAYER", font=f(25, False), fill=cyan)
+    draw.text((560, 395), occupation[:42], font=f(22, False), fill=muted)
 
-    # Главная цель.
-    draw.text((120, 960), "ГЛАВНАЯ ЦЕЛЬ НА 21 ДЕНЬ", font=font(25), fill=(38, 119, 122, 255))
-    draw.rounded_rectangle((110, 1005, 970, 1155), radius=28,
-                           fill=(247, 252, 252, 205), outline=(206, 228, 229, 255), width=2)
-    draw.text((145, 1045), goal_21[:78], font=font(28), fill=(29, 43, 46, 255))
+    # Level
+    draw.text((1038, 250), "УРОВЕНЬ", font=f(18), fill=muted)
+    draw.text((1070, 300), "1", font=f(56, True), fill=dark)
+    draw.text((1028, 380), "ЛИЧНОСТЬ", font=f(18, True), fill=cyan)
 
-    # Нижняя линия системы.
-    draw.line((110, 1205, 970, 1205), fill=(179, 220, 221, 220), width=2)
-    draw.text((120, 1228), "ЛИЧНОСТЬ  →  ВИДИМОСТЬ  →  ВЛИЯНИЕ  →  МАСШТАБ",
-              font=font(21), fill=(50, 99, 102, 255))
+    # Progress section
+    draw.text((560, 485), "ТВОЙ ПРОГРЕСС", font=f(18, True), fill=muted)
+    draw.text((1030, 485), "0 / 1000 XP", font=f(18), fill=cyan)
+    draw.rounded_rectangle((560, 525, 1160, 538), radius=6, fill=(207, 221, 224, 255))
+    draw.rounded_rectangle((560, 525, 585, 538), radius=6, fill=(56, 201, 210, 255))
+    draw.text((620, 590), "0", font=f(38, True), fill=dark)
+    draw.text((600, 640), "БАЛЛОВ", font=f(16), fill=muted)
+    draw.text((820, 590), "0", font=f(38, True), fill=dark)
+    draw.text((780, 640), "ДНЕЙ В ИГРЕ", font=f(16), fill=muted)
+    draw.text((1055, 590), "—", font=f(38, True), fill=dark)
+    draw.text((995, 640), "ТЕКУЩАЯ ЛИГА", font=f(16), fill=muted)
 
-    out = canvas.convert("RGB")
+    # Point A
+    draw.text((95, 710), "ТОЧКА А", font=f(24, True), fill=dark)
+    y = 765
+    for line in _wrap_text(draw, point_a, f(20), 350)[:7]:
+        draw.text((105, y), "• " + line, font=f(20), fill=dark)
+        y += 34
+
+    # Goal
+    draw.text((555, 755), "ГЛАВНАЯ ЦЕЛЬ НА 21 ДЕНЬ", font=f(24, True), fill=dark)
+    y = 820
+    for line in _wrap_text(draw, goal_21, f(24), 560)[:5]:
+        draw.text((585, y), line, font=f(24), fill=dark)
+        y += 38
+
+    # Footer
+    draw.text((95, 1055), "ПОМНИ:", font=f(18), fill=muted)
+    draw.text((95, 1090), "ТЫ НЕ ПРОХОДИШЬ ИГРУ.", font=f(23, True), fill=dark)
+    draw.text((95, 1128), "ТЫ СОЗДАЁШЬ НОВУЮ РЕАЛЬНОСТЬ.", font=f(23, True), fill=cyan)
+
+    if not start_date:
+        start_date = datetime.now().strftime("%d.%m.%Y")
+    draw.text((735, 1075), "ДАТА СТАРТА", font=f(18), fill=muted)
+    draw.text((735, 1125), start_date, font=f(26, True), fill=cyan)
+
     safe_name = "".join(ch for ch in name if ch.isalnum() or ch in "-_") or "player"
-    path = OUT / f"player_card_{safe_name}.jpg"
-    out.save(path, quality=95)
-    return str(path)
+    out_path = OUT / f"player_card_{safe_name}.jpg"
+    canvas.convert("RGB").save(out_path, quality=96)
+    return str(out_path)
