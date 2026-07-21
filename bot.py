@@ -12,7 +12,7 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 
 from config import load_config
 from db import Database
-from cards import points_card, player_card
+from cards import points_card, player_card, progress_card
 from keyboards import player_menu, admin_menu, confirm_task, enter_game_keyboard, admin_player_actions, admin_confirm_delete_player
 
 logging.basicConfig(level=logging.INFO)
@@ -282,11 +282,47 @@ async def progress(callback: CallbackQuery):
     if not player:
         await callback.answer("Сначала нажми /start", show_alert=True)
         return
-    await callback.message.answer(
-        "🎮 <b>ТВОЙ ПРОГРЕСС</b>\n\n"
-        f"День: <b>{player['current_day']} / 21</b>\n"
-        f"Баллы: <b>{player['points']}</b>\n"
-        f"🔥 Серия: <b>{player['streak']} дней</b>"
+
+    points = player["points"]
+    current_day = player["current_day"]
+    streak = player["streak"]
+
+    if points < 1000:
+        level_number = 1
+        level_name = "ЛИЧНОСТЬ"
+        target_points = 1000
+    elif points < 2500:
+        level_number = 2
+        level_name = "ВИДИМОСТЬ"
+        target_points = 2500
+    elif points < 4500:
+        level_number = 3
+        level_name = "ВЛИЯНИЕ"
+        target_points = 4500
+    else:
+        level_number = 4
+        level_name = "МАСШТАБ"
+        target_points = 7000
+
+    card_path = progress_card(
+        level_number=level_number,
+        level_name=level_name,
+        points=points,
+        target_points=target_points,
+        day=current_day,
+        streak=streak,
+        completed_tasks=0,
+    )
+
+    await callback.message.answer_photo(
+        FSInputFile(card_path),
+        caption=(
+            "🎮 <b>ТВОЙ ПРОГРЕСС</b>\n\n"
+            f"День: <b>{current_day} / 21</b>\n"
+            f"Баллы: <b>{points}</b>\n"
+            f"🔥 Серия: <b>{streak} дней</b>\n"
+            f"Уровень: <b>{level_number:02d} — {level_name}</b>"
+        ),
     )
     await callback.answer()
 

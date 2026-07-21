@@ -167,12 +167,7 @@ def player_card(
 
     # Progress section
     draw.text((560, 485), "ТВОЙ ПРОГРЕСС", font=f(18, True), fill=muted)
-    progress_label = "0 / 1000 БАЛЛОВ"
-    progress_font = f(14, True)
-    progress_bbox = draw.textbbox((0, 0), progress_label, font=progress_font)
-    progress_width = progress_bbox[2] - progress_bbox[0]
-    progress_x = 1155 - progress_width
-    draw.text((progress_x, 485), progress_label, font=progress_font, fill=cyan)
+    draw.text((1030, 485), "0 / 1000 XP", font=f(18), fill=cyan)
     draw.rounded_rectangle((560, 525, 1160, 538), radius=6, fill=(207, 221, 224, 255))
     draw.rounded_rectangle((560, 525, 585, 538), radius=6, fill=(56, 201, 210, 255))
     draw.text((620, 590), "0", font=f(38, True), fill=dark)
@@ -231,5 +226,75 @@ def player_card(
 
     safe_name = "".join(ch for ch in name if ch.isalnum() or ch in "-_") or "player"
     out_path = OUT / f"player_card_{safe_name}.jpg"
+    canvas.convert("RGB").save(out_path, quality=96)
+    return str(out_path)
+
+
+def progress_card(
+    level_number: int,
+    level_name: str,
+    points: int,
+    target_points: int,
+    day: int,
+    streak: int,
+    completed_tasks: int = 0,
+) -> str:
+    from PIL import ImageDraw, ImageFont
+
+    template_path = Path(__file__).resolve().parent / "assets" / "progress_card_template.png"
+    if not template_path.exists():
+        raise FileNotFoundError(f"Progress template not found: {template_path}")
+
+    canvas = Image.open(template_path).convert("RGBA")
+    draw = ImageDraw.Draw(canvas)
+
+    def pf(size, bold=False):
+        font_name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+        font_path = Path(__file__).resolve().parent / "assets" / font_name
+        return ImageFont.truetype(str(font_path), size)
+
+    dark = (26, 34, 38, 255)
+    cyan = (37, 177, 190, 255)
+    muted = (77, 91, 96, 255)
+    white = (246, 249, 250, 250)
+
+    # Clean the active top level area while preserving the approved template.
+    draw.rounded_rectangle((245, 55, 1065, 235), radius=26, fill=white)
+    draw.ellipse((65, 55, 215, 205), fill=(246, 249, 250, 245))
+    draw.rounded_rectangle((1020, 70, 1135, 190), radius=22, fill=(246, 249, 250, 245))
+
+    draw.text((92, 88), f"{level_number:02d}", font=pf(56), fill=dark)
+    draw.text((260, 70), "УРОВЕНЬ", font=pf(18, True), fill=cyan)
+    draw.text((260, 102), level_name.upper(), font=pf(36, True), fill=dark)
+
+    subtitles = {
+        "ЛИЧНОСТЬ": "Ты создаёшь фундамент своей новой реальности",
+        "ВИДИМОСТЬ": "Ты заявляешь о себе и притягиваешь внимание",
+        "ВЛИЯНИЕ": "Тебя слышат. Твои действия начинают менять других",
+        "МАСШТАБ": "Ты превращаешь внимание в возможности и рост",
+    }
+    draw.text(
+        (260, 152),
+        subtitles.get(level_name.upper(), "Ты продолжаешь двигаться дальше"),
+        font=pf(18),
+        fill=muted,
+    )
+
+    draw.text((820, 78), "ТВОЙ ПРОГРЕСС", font=pf(16, True), fill=muted)
+    draw.text((820, 115), f"{points} / {target_points}", font=pf(34, True), fill=cyan)
+    draw.text((820, 155), "БАЛЛОВ", font=pf(16), fill=muted)
+
+    bar_x1, bar_y1, bar_x2, bar_y2 = 260, 192, 790, 210
+    draw.rounded_rectangle((bar_x1, bar_y1, bar_x2, bar_y2), radius=8, fill=(207, 220, 223, 255))
+    ratio = 0 if target_points <= 0 else max(0, min(1, points / target_points))
+    fill_x = bar_x1 + int((bar_x2 - bar_x1) * ratio)
+    if fill_x > bar_x1:
+        draw.rounded_rectangle((bar_x1, bar_y1, fill_x, bar_y2), radius=8, fill=cyan)
+
+    draw.text((270, 220), f"ДЕНЬ {day}/21", font=pf(15, True), fill=muted)
+    draw.text((500, 220), f"СЕРИЯ {streak} ДН.", font=pf(15, True), fill=muted)
+    draw.text((730, 220), f"ЗАДАНИЙ {completed_tasks}", font=pf(15, True), fill=muted)
+
+    out_path = OUT / f"progress_{level_number}_{points}.jpg"
     canvas.convert("RGB").save(out_path, quality=96)
     return str(out_path)
