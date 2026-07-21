@@ -13,7 +13,7 @@ from aiogram.types import Message, CallbackQuery, FSInputFile
 from config import load_config
 from db import Database
 from cards import points_card, player_card, public_player_card, progress_card
-from keyboards import player_menu, admin_menu, confirm_task, enter_game_keyboard, public_players_keyboard, admin_player_actions, admin_confirm_delete_player
+from keyboards import player_menu, admin_menu, confirm_task, confirm_broadcast, enter_game_keyboard, public_players_keyboard, admin_player_actions, admin_confirm_delete_player
 
 logging.basicConfig(level=logging.INFO)
 
@@ -31,6 +31,11 @@ class CreateTask(StatesGroup):
     title = State()
     description = State()
     points = State()
+    confirm = State()
+
+
+class BroadcastMessage(StatesGroup):
+    content = State()
     confirm = State()
 
 
@@ -539,6 +544,22 @@ async def admin_players_button(message: Message, state: FSMContext):
 @dp.message(
     F.chat.type == "private",
     F.from_user.id.in_(config.admin_ids),
+    F.text == "📣 Отправить сообщение всем",
+)
+async def admin_broadcast_button(message: Message, state: FSMContext):
+    await state.clear()
+    await state.set_state(BroadcastMessage.content)
+    await message.answer(
+        "📣 <b>СООБЩЕНИЕ ВСЕМ ИГРОКАМ</b>\n\n"
+        "Отправь сообщение, которое получат все игроки. "
+        "Можно отправить текст, фотографию, видео или файл.",
+        reply_markup=admin_menu(),
+    )
+
+
+@dp.message(
+    F.chat.type == "private",
+    F.from_user.id.in_(config.admin_ids),
     F.text == "🏆 Рейтинг",
 )
 async def admin_leaderboard_button(message: Message, state: FSMContext):
@@ -551,6 +572,72 @@ async def admin_leaderboard_button(message: Message, state: FSMContext):
     if len(lines) == 1:
         lines.append("Пока нет игроков.")
     await message.answer("\n".join(lines), reply_markup=admin_menu())
+
+
+@dp.message(BroadcastMessage.content)
+async def admin_broadcast_content(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    await state.update_data(
+        broadcast_chat_id=message.chat.id,
+        broadcast_message_id=message.message_id,
+    )
+    await state.set_state(BroadcastMessage.confirm)
+    await message.answer(
+        "Проверь сообщение выше. Отправить его всем игрокам?",
+        reply_markup=confirm_broadcast(),
+    )
+
+
+@dp.callback_query(F.data == "admin_send_broadcast")
+async def admin_send_broadcast(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+
+    data = await state.get_data()
+    source_chat_id = data.get("broadcast_chat_id")
+    source_message_id = data.get("broadcast_message_id")
+    if not source_chat_id or not source_message_id:
+        await callback.answer("Сообщение потеряно. Создай рассылку заново.", show_alert=True)
+        return
+
+    # Clear first so a repeated click cannot launch the same broadcast twice.
+    await state.clear()
+    await callback.answer("Рассылка началась")
+
+    players = await db.all_players()
+    recipients = [player for player in players if player["profile_complete"]]
+    sent = 0
+    failed = 0
+
+    for player in recipients:
+        try:
+            await bot.copy_message(
+                chat_id=player["tg_user_id"],
+                from_chat_id=source_chat_id,
+                message_id=source_message_id,
+            )
+            sent += 1
+        except Exception:
+            failed += 1
+            logging.exception("Broadcast delivery failed")
+
+    await callback.message.answer(
+        "📣 Рассылка завершена.\n\n"
+        f"Получили: <b>{sent}</b>\n"
+        f"Ошибок: <b>{failed}</b>",
+        reply_markup=admin_menu(),
+    )
+
+
+@dp.callback_query(F.data == "admin_cancel_broadcast")
+async def admin_cancel_broadcast(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    await state.clear()
+    await callback.message.answer("Рассылка отменена.", reply_markup=admin_menu())
+    await callback.answer("Отменено")
 
 
 @dp.message(CreateTask.title)

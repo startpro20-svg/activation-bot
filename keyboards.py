@@ -25,6 +25,7 @@ def admin_menu():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="➕ Создать задание")],
+            [KeyboardButton(text="📣 Отправить сообщение всем")],
             [KeyboardButton(text="👥 Игроки"), KeyboardButton(text="🏆 Рейтинг")],
         ],
         resize_keyboard=True,
@@ -36,6 +37,13 @@ def confirm_task():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚀 Отправить всем", callback_data="admin_send_task")],
         [InlineKeyboardButton(text="✏️ Отменить", callback_data="admin_cancel_task")],
+    ])
+
+
+def confirm_broadcast():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📣 Отправить всем", callback_data="admin_send_broadcast")],
+        [InlineKeyboardButton(text="✏️ Отменить", callback_data="admin_cancel_broadcast")],
     ])
 
 
