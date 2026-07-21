@@ -61,6 +61,24 @@ def public_level(points: int) -> tuple[int, str]:
     return 4, "МАСШТАБ"
 
 
+async def send_admin_players(message: Message):
+    players = await db.all_players()
+    if not players:
+        await message.answer("Игроков пока нет.", reply_markup=admin_menu())
+        return
+
+    await message.answer("👥 <b>ИГРОКИ</b>", reply_markup=admin_menu())
+    for player in players[:100]:
+        name = player["first_name"] or player["username"] or str(player["tg_user_id"])
+        await message.answer(
+            f"<b>{name}</b>\n"
+            f"Баллы: {player['points']}\n"
+            f"День: {player['current_day']} / 21\n"
+            f"ID: <code>{player['tg_user_id']}</code>",
+            reply_markup=admin_player_actions(player["tg_user_id"]),
+        )
+
+
 async def ensure_player(message: Message):
     player = await db.upsert_player(message.from_user)
     if player["topic_id"]:
@@ -378,7 +396,10 @@ async def leaderboard(callback: CallbackQuery):
         lines.append(f"{i}. {name} — <b>{row['points']}</b>")
     if len(lines) == 1:
         lines.append("Пока нет игроков.")
-    await callback.message.answer("\n".join(lines))
+    await callback.message.answer(
+        "\n".join(lines),
+        reply_markup=admin_menu() if is_admin(callback.from_user.id) else None,
+    )
     await callback.answer()
 
 
@@ -485,8 +506,49 @@ async def admin_create_task(callback: CallbackQuery, state: FSMContext):
         return
     await state.clear()
     await state.set_state(CreateTask.title)
-    await callback.message.answer("✍️ Введи <b>название задания</b>:")
+    await callback.message.answer(
+        "✍️ Введи <b>название задания</b>:",
+        reply_markup=admin_menu(),
+    )
     await callback.answer()
+
+
+@dp.message(
+    F.chat.type == "private",
+    F.from_user.id.in_(config.admin_ids),
+    F.text == "➕ Создать задание",
+)
+async def admin_create_task_button(message: Message, state: FSMContext):
+    await state.clear()
+    await state.set_state(CreateTask.title)
+    await message.answer("✍️ Введи <b>название задания</b>:", reply_markup=admin_menu())
+
+
+@dp.message(
+    F.chat.type == "private",
+    F.from_user.id.in_(config.admin_ids),
+    F.text == "👥 Игроки",
+)
+async def admin_players_button(message: Message, state: FSMContext):
+    await state.clear()
+    await send_admin_players(message)
+
+
+@dp.message(
+    F.chat.type == "private",
+    F.from_user.id.in_(config.admin_ids),
+    F.text == "🏆 Рейтинг",
+)
+async def admin_leaderboard_button(message: Message, state: FSMContext):
+    await state.clear()
+    rows = await db.leaderboard()
+    lines = ["🏆 <b>РЕЙТИНГ ACTIVATION</b>\n"]
+    for index, row in enumerate(rows, 1):
+        name = row["first_name"] or row["username"] or "Игрок"
+        lines.append(f"{index}. {name} — <b>{row['points']}</b>")
+    if len(lines) == 1:
+        lines.append("Пока нет игроков.")
+    await message.answer("\n".join(lines), reply_markup=admin_menu())
 
 
 @dp.message(CreateTask.title)
@@ -587,24 +649,7 @@ async def admin_send_task(callback: CallbackQuery, state: FSMContext):
 async def admin_players(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         return
-
-    players = await db.all_players()
-    if not players:
-        await callback.message.answer("Игроков пока нет.")
-        await callback.answer()
-        return
-
-    await callback.message.answer("👥 <b>ИГРОКИ</b>")
-    for p in players[:100]:
-        name = p["first_name"] or p["username"] or str(p["tg_user_id"])
-        await callback.message.answer(
-            f"<b>{name}</b>\n"
-            f"Баллы: {p['points']}\n"
-            f"День: {p['current_day']} / 21\n"
-            f"ID: <code>{p['tg_user_id']}</code>",
-            reply_markup=admin_player_actions(p["tg_user_id"]),
-        )
-
+    await send_admin_players(callback.message)
     await callback.answer()
 
 

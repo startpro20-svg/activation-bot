@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 def player_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -22,11 +22,15 @@ def public_players_keyboard(players):
     ])
 
 def admin_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Создать задание", callback_data="admin_create_task")],
-        [InlineKeyboardButton(text="👥 Игроки", callback_data="admin_players")],
-        [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="admin_leaderboard")],
-    ])
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="➕ Создать задание")],
+            [KeyboardButton(text="👥 Игроки"), KeyboardButton(text="🏆 Рейтинг")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Панель ведущей",
+    )
 
 def confirm_task():
     return InlineKeyboardMarkup(inline_keyboard=[
