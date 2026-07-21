@@ -167,7 +167,7 @@ def player_card(
 
     # Progress section
     draw.text((560, 485), "ТВОЙ ПРОГРЕСС", font=f(18, True), fill=muted)
-    draw.text((1030, 485), "0 / 1000 XP", font=f(18), fill=cyan)
+    draw.text((1030, 485), "0 / 1000 БАЛЛОВ", font=f(18), fill=cyan)
     draw.rounded_rectangle((560, 525, 1160, 538), radius=6, fill=(207, 221, 224, 255))
     draw.rounded_rectangle((560, 525, 585, 538), radius=6, fill=(56, 201, 210, 255))
     draw.text((620, 590), "0", font=f(38, True), fill=dark)
