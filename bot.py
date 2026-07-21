@@ -70,8 +70,10 @@ async def send_admin_players(message: Message):
     await message.answer("👥 <b>ИГРОКИ</b>", reply_markup=admin_menu())
     for player in players[:100]:
         name = player["first_name"] or player["username"] or str(player["tg_user_id"])
+        username = f"@{player['username']}" if player["username"] else "не указан"
         await message.answer(
             f"<b>{name}</b>\n"
+            f"Ник: {username}\n"
             f"Баллы: {player['points']}\n"
             f"День: {player['current_day']} / 21\n"
             f"ID: <code>{player['tg_user_id']}</code>",
