@@ -1,5 +1,4 @@
 from pathlib import Path
-from PIL import Image
 import asyncio
 import logging
 
@@ -182,9 +181,8 @@ async def onboarding_goal(message: Message, state: FSMContext):
     await state.update_data(goal_21=message.text.strip())
     await state.set_state(PlayerOnboarding.photo)
     await message.answer(
-        "📸 Теперь отправь <b>квадратную фотографию 1:1</b>.\n\n"
-        "Важно: отправь именно фото, а не скриншот карточки. "
-        "Бот вставит его в квадратную рамку без обрезки."
+        "📸 Теперь отправь <b>свою фотографию</b>.\n\n"
+        "Она станет частью твоей персональной карты игрока ACTIVATION."
     )
 
 
@@ -201,22 +199,22 @@ async def onboarding_photo(message: Message, state: FSMContext):
 
     await bot.download_file(file.file_path, destination=photo_path)
 
-    # Принимаем только квадратное фото 1:1. Ничего не обрезаем автоматически.
+    # Принимаем только квадратное фото 1:1. Проверяем фактический файл после загрузки.
+    from PIL import Image
     try:
         with Image.open(photo_path) as uploaded_photo:
             width, height = uploaded_photo.size
     except Exception:
         photo_path.unlink(missing_ok=True)
-        await message.answer("Не удалось открыть изображение. Отправь другое квадратное фото 1:1.")
+        await message.answer("Не удалось открыть фотографию. Отправь её ещё раз в формате JPG или PNG.")
         return
 
-    # Telegram может изменить размер на несколько пикселей, поэтому допускаем до 2% разницы.
-    if min(width, height) < 500 or abs(width - height) / max(width, height) > 0.02:
+    if abs(width - height) > max(3, int(max(width, height) * 0.01)):
         photo_path.unlink(missing_ok=True)
         await message.answer(
-            "❌ Фото не подходит.\n\n"
-            "Отправь <b>квадратное фото 1:1</b> размером не менее 500 × 500 px. "
-            "Бот вставит его в рамку целиком, без обрезки."
+            "❌ Фото не квадратное.\n\n"
+            "Обрежь его до формата <b>1:1</b> и отправь снова. "
+            "Лицо лучше расположить ближе к центру."
         )
         return
 
@@ -260,6 +258,7 @@ async def onboarding_photo(message: Message, state: FSMContext):
         data["occupation"],
         data["point_a"],
         data["goal_21"],
+        username="",
     )
 
     await message.answer_photo(

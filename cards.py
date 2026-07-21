@@ -114,15 +114,19 @@ def player_card(
     canvas = Image.open(template_path).convert("RGBA")
     draw = ImageDraw.Draw(canvas)
 
-    # Точные границы квадратного фото в утверждённом шаблоне.
-    # Фото уже проверено ботом как 1:1, поэтому не обрезаем его — только уменьшаем.
-    PHOTO_X, PHOTO_Y = 72, 132
-    PHOTO_SIZE = 430
+    # Шаблон 1248x1248. Координаты привязаны к согласованному макету.
+    # Фото: квадрат слева сверху.
     photo = Image.open(photo_path).convert("RGB")
-    photo = photo.resize((PHOTO_SIZE, PHOTO_SIZE), Image.Resampling.LANCZOS)
-    mask = Image.new("L", (PHOTO_SIZE, PHOTO_SIZE), 0)
+
+    # Точные внутренние границы фоторамки утверждённого шаблона.
+    # Пользователь присылает квадрат 1:1; фото заполняет всю рамку стык в стык.
+    PHOTO_X, PHOTO_Y = 72, 132
+    PHOTO_W, PHOTO_H = 430, 493
+    photo = photo.resize((PHOTO_W, PHOTO_H), Image.Resampling.LANCZOS)
+
+    mask = Image.new("L", (PHOTO_W, PHOTO_H), 0)
     md = ImageDraw.Draw(mask)
-    md.rounded_rectangle((0, 0, PHOTO_SIZE, PHOTO_SIZE), radius=34, fill=255)
+    md.rounded_rectangle((0, 0, PHOTO_W - 1, PHOTO_H - 1), radius=34, fill=255)
     photo_rgba = photo.convert("RGBA")
     photo_rgba.putalpha(mask)
     canvas.alpha_composite(photo_rgba, (PHOTO_X, PHOTO_Y))
@@ -173,13 +177,13 @@ def player_card(
         occupation or "",
         lambda s: f(s, False),
         max_width=405,
-        max_height=76,
-        max_size=24,
-        min_size=14,
-        line_gap=5,
-        max_lines=3,
+        max_height=48,
+        max_size=22,
+        min_size=13,
+        line_gap=4,
+        max_lines=2,
     )
-    oy = 355
+    oy = 350
     for line in occupation_lines:
         draw.text((560, oy), line, font=occupation_font, fill=muted)
         oy += occupation_lh
@@ -191,8 +195,8 @@ def player_card(
 
     # Progress section
     draw.text((560, 485), "ТВОЙ ПРОГРЕСС", font=f(18, True), fill=muted)
-    draw.text((1080, 485), "0", font=f(24, True), fill=cyan)
-    draw.text((1110, 490), "БАЛЛОВ", font=f(15), fill=cyan)
+    draw.text((1080, 485), "0", font=f(22, True), fill=cyan)
+    draw.text((1107, 490), "БАЛЛОВ", font=f(15), fill=cyan)
     draw.rounded_rectangle((560, 525, 1160, 538), radius=6, fill=(207, 221, 224, 255))
     draw.rounded_rectangle((560, 525, 585, 538), radius=6, fill=(56, 201, 210, 255))
     draw.text((620, 590), "0", font=f(38, True), fill=dark)
