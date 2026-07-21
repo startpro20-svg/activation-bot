@@ -203,8 +203,9 @@ def player_card(
     draw.text((600, 640), "БАЛЛОВ", font=f(16), fill=muted)
     draw.text((820, 590), "0", font=f(38, True), fill=dark)
     draw.text((780, 640), "ДНЕЙ В ИГРЕ", font=f(16), fill=muted)
-    draw.text((1055, 590), "—", font=f(38, True), fill=dark)
-    draw.text((995, 640), "ТЕКУЩАЯ ЛИГА", font=f(16), fill=muted)
+    # Стартовая ачивка: первый уровень уже открыт после регистрации.
+    draw.text((1050, 580), "★", font=f(34, True), fill=cyan)
+    draw.text((987, 640), "ЛИЧНОСТЬ", font=f(16, True), fill=muted)
 
     # Point A — text always stays inside the glass block.
     draw.text((95, 710), "ТОЧКА А", font=f(24, True), fill=dark)
