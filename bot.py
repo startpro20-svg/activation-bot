@@ -193,8 +193,8 @@ async def onboarding_goal(message: Message, state: FSMContext):
     await state.update_data(goal_21=message.text.strip())
     await state.set_state(PlayerOnboarding.photo)
     await message.answer(
-        "📸 Теперь отправь <b>свою фотографию</b>.\n\n"
-        "Она станет частью твоей персональной карты игрока ACTIVATION."
+        "📸 <b>Добавь фотографию 1:1</b>\n\n"
+        "Отправь квадратное фото. Оно станет частью твоей персональной карты игрока ACTIVATION."
     )
 
 

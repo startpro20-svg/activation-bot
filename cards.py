@@ -118,10 +118,10 @@ def player_card(
     # Фото: квадрат слева сверху.
     photo = Image.open(photo_path).convert("RGB")
 
-    # Точные внутренние границы фоторамки утверждённого шаблона.
-    # Пользователь присылает квадрат 1:1; фото заполняет всю рамку стык в стык.
-    PHOTO_X, PHOTO_Y = 72, 132
-    PHOTO_W, PHOTO_H = 430, 493
+    # Пользователь присылает квадратное фото 1:1.
+    # Сохраняем квадрат и не растягиваем изображение по вертикали.
+    PHOTO_X, PHOTO_Y = 72, 164
+    PHOTO_W = PHOTO_H = 430
     photo = photo.resize((PHOTO_W, PHOTO_H), Image.Resampling.LANCZOS)
 
     mask = Image.new("L", (PHOTO_W, PHOTO_H), 0)
