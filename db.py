@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     description TEXT NOT NULL,
     points INTEGER NOT NULL,
     created_by INTEGER,
+    task_type TEXT NOT NULL DEFAULT 'main',
+    deadline_at TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -37,6 +39,11 @@ CREATE TABLE IF NOT EXISTS task_deliveries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id INTEGER NOT NULL,
     player_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'delivered',
+    submission_chat_id INTEGER,
+    submission_message_id INTEGER,
+    submitted_at TEXT,
+    reviewed_at TEXT,
     delivered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(task_id, player_id)
 );
@@ -99,6 +106,33 @@ class Database:
 
             for column, sql in migrations.items():
                 if column not in columns:
+                    await db.execute(sql)
+
+            # Safe migration for task review on existing Railway databases.
+            cur = await db.execute("PRAGMA table_info(task_deliveries)")
+            delivery_columns = {row[1] for row in await cur.fetchall()}
+            delivery_migrations = {
+                "status": "ALTER TABLE task_deliveries ADD COLUMN status TEXT NOT NULL DEFAULT 'delivered'",
+                "submission_chat_id": "ALTER TABLE task_deliveries ADD COLUMN submission_chat_id INTEGER",
+                "submission_message_id": "ALTER TABLE task_deliveries ADD COLUMN submission_message_id INTEGER",
+                "submitted_at": "ALTER TABLE task_deliveries ADD COLUMN submitted_at TEXT",
+                "reviewed_at": "ALTER TABLE task_deliveries ADD COLUMN reviewed_at TEXT",
+            }
+
+            for column, sql in delivery_migrations.items():
+                if column not in delivery_columns:
+                    await db.execute(sql)
+
+            # Safe migration for task types and individual deadlines.
+            cur = await db.execute("PRAGMA table_info(tasks)")
+            task_columns = {row[1] for row in await cur.fetchall()}
+            task_migrations = {
+                "task_type": "ALTER TABLE tasks ADD COLUMN task_type TEXT NOT NULL DEFAULT 'main'",
+                "deadline_at": "ALTER TABLE tasks ADD COLUMN deadline_at TEXT",
+            }
+
+            for column, sql in task_migrations.items():
+                if column not in task_columns:
                     await db.execute(sql)
 
             await db.commit()
@@ -209,14 +243,24 @@ class Database:
             )
             return await cur.fetchone()
 
-    async def create_task(self, title: str, description: str, points: int, created_by: int):
+    async def create_task(
+        self,
+        title: str,
+        description: str,
+        points: int,
+        created_by: int,
+        task_type: str = "main",
+        deadline_at: str | None = None,
+    ):
         async with aiosqlite.connect(self.path) as db:
             cur = await db.execute(
                 """
-                INSERT INTO tasks (title, description, points, created_by)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO tasks (
+                    title, description, points, created_by, task_type, deadline_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (title, description, points, created_by),
+                (title, description, points, created_by, task_type, deadline_at),
             )
             await db.commit()
             return cur.lastrowid
@@ -233,6 +277,252 @@ class Database:
                 (task_id, player["id"]),
             )
             await db.commit()
+
+    async def latest_task_for_player(self, tg_user_id: int):
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                """
+                SELECT td.id AS delivery_id, td.status,
+                       t.id AS task_id, t.title, t.description, t.points,
+                       t.task_type, t.deadline_at
+                FROM task_deliveries td
+                JOIN tasks t ON t.id=td.task_id
+                JOIN players p ON p.id=td.player_id
+                WHERE p.tg_user_id=?
+                ORDER BY t.id DESC
+                LIMIT 1
+                """,
+                (tg_user_id,),
+            )
+            return await cur.fetchone()
+
+    async def active_tasks_for_player(self, tg_user_id: int):
+        """Return all delivered tasks whose individual deadline has not passed."""
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                """
+                SELECT td.id AS delivery_id, td.status,
+                       t.id AS task_id, t.title, t.description, t.points,
+                       t.task_type, t.deadline_at
+                FROM task_deliveries td
+                JOIN tasks t ON t.id=td.task_id
+                JOIN players p ON p.id=td.player_id
+                WHERE p.tg_user_id=?
+                  AND t.is_active=1
+                  AND (t.deadline_at IS NULL OR t.deadline_at > CURRENT_TIMESTAMP)
+                ORDER BY
+                    CASE t.task_type
+                        WHEN 'main' THEN 1
+                        WHEN 'media' THEN 2
+                        ELSE 3
+                    END,
+                    t.deadline_at ASC,
+                    t.id ASC
+                """,
+                (tg_user_id,),
+            )
+            return await cur.fetchall()
+
+    async def get_task_delivery(self, task_id: int, tg_user_id: int):
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                """
+                SELECT td.id AS delivery_id, td.status,
+                       t.id AS task_id, t.title, t.description, t.points,
+                       t.task_type, t.deadline_at,
+                       p.tg_user_id, p.first_name, p.topic_id
+                FROM task_deliveries td
+                JOIN tasks t ON t.id=td.task_id
+                JOIN players p ON p.id=td.player_id
+                WHERE t.id=? AND p.tg_user_id=?
+                """,
+                (task_id, tg_user_id),
+            )
+            return await cur.fetchone()
+
+    async def mark_task_submitted(
+        self,
+        delivery_id: int,
+        tg_user_id: int,
+        submission_chat_id: int,
+        submission_message_id: int,
+    ):
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute(
+                """
+                UPDATE task_deliveries
+                SET status='submitted',
+                    submission_chat_id=?,
+                    submission_message_id=?,
+                    submitted_at=CURRENT_TIMESTAMP,
+                    reviewed_at=NULL
+                WHERE id=?
+                  AND player_id=(SELECT id FROM players WHERE tg_user_id=?)
+                  AND status IN ('delivered', 'revision')
+                  AND EXISTS (
+                      SELECT 1
+                      FROM tasks t
+                      WHERE t.id=task_deliveries.task_id
+                        AND (t.deadline_at IS NULL OR t.deadline_at > CURRENT_TIMESTAMP)
+                  )
+                """,
+                (submission_chat_id, submission_message_id, delivery_id, tg_user_id),
+            )
+            await db.commit()
+            return cur.rowcount == 1
+
+    async def restore_task_submission(
+        self,
+        delivery_id: int,
+        tg_user_id: int,
+        previous_status: str,
+        submission_chat_id: int,
+        submission_message_id: int,
+    ):
+        """Unlock a submission only when forwarding it to the host failed."""
+        if previous_status not in {"delivered", "revision"}:
+            return False
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute(
+                """
+                UPDATE task_deliveries
+                SET status=?, submission_chat_id=NULL, submission_message_id=NULL,
+                    submitted_at=NULL, reviewed_at=NULL
+                WHERE id=?
+                  AND player_id=(SELECT id FROM players WHERE tg_user_id=?)
+                  AND status='submitted'
+                  AND submission_chat_id=?
+                  AND submission_message_id=?
+                """,
+                (
+                    previous_status,
+                    delivery_id,
+                    tg_user_id,
+                    submission_chat_id,
+                    submission_message_id,
+                ),
+            )
+            await db.commit()
+            return cur.rowcount == 1
+
+    async def get_task_submission(self, delivery_id: int):
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(
+                """
+                SELECT td.id AS delivery_id, td.status,
+                       td.submission_chat_id, td.submission_message_id,
+                       t.title, t.points,
+                       p.tg_user_id, p.first_name, p.topic_id, p.points AS current_points
+                FROM task_deliveries td
+                JOIN tasks t ON t.id=td.task_id
+                JOIN players p ON p.id=td.player_id
+                WHERE td.id=?
+                """,
+                (delivery_id,),
+            )
+            return await cur.fetchone()
+
+    async def accept_task_submission(self, delivery_id: int):
+        """Atomically accept one submission and add its points exactly once."""
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("BEGIN IMMEDIATE")
+            cur = await db.execute(
+                """
+                SELECT td.status, t.title, t.points AS task_points,
+                       p.id AS player_id, p.tg_user_id, p.first_name,
+                       p.points AS current_points
+                FROM task_deliveries td
+                JOIN tasks t ON t.id=td.task_id
+                JOIN players p ON p.id=td.player_id
+                WHERE td.id=?
+                """,
+                (delivery_id,),
+            )
+            row = await cur.fetchone()
+            if not row:
+                await db.rollback()
+                return None
+            if row["status"] != "submitted":
+                await db.rollback()
+                return {"status": row["status"]}
+
+            total = row["current_points"] + row["task_points"]
+            await db.execute(
+                "UPDATE players SET points=? WHERE id=?",
+                (total, row["player_id"]),
+            )
+            await db.execute(
+                "INSERT INTO point_events (player_id, delta, reason) VALUES (?, ?, ?)",
+                (row["player_id"], row["task_points"], f"Задание: {row['title']}"),
+            )
+            await db.execute(
+                """
+                UPDATE task_deliveries
+                SET status='accepted', reviewed_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
+                (delivery_id,),
+            )
+            await db.commit()
+            return {
+                "status": "accepted",
+                "title": row["title"],
+                "points": row["task_points"],
+                "total": total,
+                "tg_user_id": row["tg_user_id"],
+                "first_name": row["first_name"],
+            }
+
+    async def return_task_for_revision(self, delivery_id: int):
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("BEGIN IMMEDIATE")
+            cur = await db.execute(
+                """
+                SELECT td.status, t.title, p.tg_user_id, p.first_name,
+                       CASE
+                           WHEN t.deadline_at IS NOT NULL
+                                AND t.deadline_at <= CURRENT_TIMESTAMP
+                           THEN 1 ELSE 0
+                       END AS deadline_expired
+                FROM task_deliveries td
+                JOIN tasks t ON t.id=td.task_id
+                JOIN players p ON p.id=td.player_id
+                WHERE td.id=?
+                """,
+                (delivery_id,),
+            )
+            row = await cur.fetchone()
+            if not row:
+                await db.rollback()
+                return None
+            if row["status"] != "submitted":
+                await db.rollback()
+                return {"status": row["status"]}
+            if row["deadline_expired"]:
+                await db.rollback()
+                return {"status": "expired"}
+
+            await db.execute(
+                """
+                UPDATE task_deliveries
+                SET status='revision', reviewed_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
+                (delivery_id,),
+            )
+            await db.commit()
+            return {
+                "status": "revision",
+                "title": row["title"],
+                "tg_user_id": row["tg_user_id"],
+                "first_name": row["first_name"],
+            }
 
     async def add_points(self, tg_user_id: int, delta: int, reason: str):
         async with aiosqlite.connect(self.path) as db:

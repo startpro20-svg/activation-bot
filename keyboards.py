@@ -1,13 +1,16 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 def player_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎯 Актуальное задание", callback_data="latest_task")],
-        [InlineKeyboardButton(text="🎮 Мой прогресс", callback_data="progress")],
-        [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="leaderboard")],
-        [InlineKeyboardButton(text="🏅 Достижения", callback_data="achievements")],
-        [InlineKeyboardButton(text="👥 Игроки", callback_data="players")],
-    ])
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📋 Задания дня")],
+            [KeyboardButton(text="🎮 Мой прогресс"), KeyboardButton(text="🏆 Рейтинг")],
+            [KeyboardButton(text="🏅 Достижения"), KeyboardButton(text="👥 Игроки")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Меню игрока",
+    )
 
 
 def public_players_keyboard(players):
@@ -40,6 +43,15 @@ def confirm_task():
     ])
 
 
+def task_type_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎯 Основное", callback_data="create_task_type:main")],
+        [InlineKeyboardButton(text="📱 Медиа", callback_data="create_task_type:media")],
+        [InlineKeyboardButton(text="✨ Дополнительное", callback_data="create_task_type:extra")],
+        [InlineKeyboardButton(text="✏️ Отменить", callback_data="admin_cancel_task")],
+    ])
+
+
 def confirm_broadcast():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📣 Отправить всем", callback_data="admin_send_broadcast")],
@@ -53,8 +65,32 @@ def enter_game_keyboard():
     ])
 
 
+def submit_task_keyboard(task_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📤 Сдать задание", callback_data=f"submit_task:{task_id}")],
+    ])
+
+
+def task_review_keyboard(delivery_id: int, points: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text=f"✅ Принять +{points}",
+                callback_data=f"accept_task:{delivery_id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="↩️ На доработку",
+                callback_data=f"revise_task:{delivery_id}",
+            )
+        ],
+    ])
+
+
 def admin_player_actions(user_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить баллы", callback_data=f"admin_add_points:{user_id}")],
         [InlineKeyboardButton(text="🗑 Удалить игрока", callback_data=f"admin_delete_player:{user_id}")],
     ])
 
